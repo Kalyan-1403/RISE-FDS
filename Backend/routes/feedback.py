@@ -29,7 +29,7 @@ PARAMETERS = [
 
 @feedback_bp.route('/submit', methods=['POST'])
 def submit_feedback():
-    """Submit student feedback (public endpoint)"""
+    """Submit student feedback (public endpoint) with security measures"""
     try:
         data = request.get_json()
         
@@ -39,6 +39,11 @@ def submit_feedback():
         
         if not data.get('responses') or len(data['responses']) == 0:
             return jsonify({'error': 'Feedback responses are required'}), 400
+        
+        # Validate batch_id format
+        valid, msg = validate_batch_id(data['batch_id'])
+        if not valid:
+            return jsonify({'error': msg}), 400
         
         # Verify batch exists
         batch = Batch.query.filter_by(batch_id=data['batch_id']).first()
@@ -50,8 +55,17 @@ def submit_feedback():
         if today < batch.slot_start_date or today > batch.slot_end_date:
             return jsonify({'error': 'This feedback period is not active'}), 400
         
-        # Get client IP
-        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        # Get client IP - trust X-Forwarded-For only from trusted proxy
+        # In production, configure trusted proxies properly
+        client_ip = request.remote_addr
+        if request.headers.get('X-Forwarded-For'):
+            # Take the rightmost IP (client IP when behind proxy)
+            forwarded_ips = request.headers.get('X-Forwarded-For').split(',')
+            client_ip = forwarded_ips[-1].strip()
+        
+        # Hash IP for privacy
+        from utils.security import hash_ip_address
+        hashed_ip = hash_ip_address(client_ip)
         
         # Process each faculty feedback
         saved_count = 0
@@ -60,6 +74,11 @@ def submit_feedback():
             ratings = response.get('ratings', {})
             
             if not faculty_id:
+                continue
+            
+            # Validate faculty exists in this batch
+            faculty = Faculty.query.get(faculty_id)
+            if not faculty or faculty not in batch.faculty:
                 continue
             
             # Validate all 15 ratings
@@ -76,6 +95,10 @@ def submit_feedback():
                     return jsonify({'error': f'Invalid rating for parameter {i}: {msg}'}), 400
                 
                 rating_values.append(int(rating))
+            
+            # Sanitize comments
+            from utils.validators import sanitize_string
+            comments = sanitize_string(response.get('comments', ''), max_length=1000)
             
             # Create feedback response
             feedback = FeedbackResponse(
@@ -97,8 +120,8 @@ def submit_feedback():
                 param13_rating=rating_values[12],
                 param14_rating=rating_values[13],
                 param15_rating=rating_values[14],
-                comments=response.get('comments', ''),
-                student_ip=client_ip
+                comments=comments,
+                student_ip=hashed_ip  # Store hashed IP for privacy
             )
             
             db.session.add(feedback)
@@ -114,7 +137,8 @@ def submit_feedback():
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        current_app.logger.error(f"Feedback submission error: {str(e)}")
+        return jsonify({'error': 'Failed to submit feedback. Please try again.'}), 500
 
 @feedback_bp.route('/batch/<batch_id>/count', methods=['GET'])
 def get_batch_feedback_count(batch_id):

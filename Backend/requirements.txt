@@ -26,6 +26,14 @@ reportlab==4.0.7
 fpdf2==2.7.6
 matplotlib==3.8.2
 
-# Email/SMS (optional for now)
-# twilio==8.10.0
-# sendgrid==6.11.0
+# Production WSGI Server
+gunicorn==21.2.0
+
+# Redis for rate limiting (production)
+redis==5.0.1
+
+# HTTP requests (for SMS API)
+requests==2.31.0
+
+# Security headers
+flask-talisman==1.1.0
