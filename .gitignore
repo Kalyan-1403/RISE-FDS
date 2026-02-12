@@ -1,22 +1,61 @@
-# Dependency directories
-node_modules/
-venv/
-env/
-.env
-
-# Python compilation
-__pycache__/
-*.py[cod]
-
-# OS generated files
+# ==========================
+# GLOBAL / OS FILES
+# ==========================
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+*.log
 
-# Log files
+# ==========================
+# PYTHON (BACKEND)
+# ==========================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+
+# Environment Variables (Keep secrets safe!)
+.env
+.env.local
+.env.*.local
+
+# Flask specific
+instance/
+.webassets-cache
+
+# Database (if using SQLite locally)
+*.sqlite3
+*.db
+
+# ==========================
+# NODE / FRONTEND
+# ==========================
+# Dependencies
+node_modules/
+
+# Production Build
+build/
+dist/
+
+# Testing & Logs
+coverage/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Build directories (optional, if you have them)
-dist/
-build/
+# Local Env Files
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# Vite specific (if using Vite)
+.vite/
