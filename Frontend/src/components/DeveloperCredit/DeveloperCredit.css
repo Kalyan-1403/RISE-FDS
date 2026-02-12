@@ -1,0 +1,127 @@
+/* Professional Developer Credit Badge */
+
+.dev-credit {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #ff6b9d 0%, #feca57 50%, #48dbfb 100%);
+  background-size: 200% 200%;
+  border-radius: 50px;
+  text-decoration: none;
+  color: white;
+  font-weight: 700;
+  font-size: 12px;
+  box-shadow: 0 6px 20px rgba(255, 107, 157, 0.35);
+  z-index: 9999;
+  animation: subtleFloat 4s ease-in-out infinite;
+  transition: all 0.3s ease;
+}
+
+@keyframes subtleFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.dev-credit:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 10px 30px rgba(255, 107, 157, 0.5);
+  animation: none;
+}
+
+.dev-icon {
+  font-size: 18px;
+  animation: subtleRotate 6s ease-in-out infinite;
+}
+
+@keyframes subtleRotate {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(10deg); }
+}
+
+.dev-text {
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+
+.dev-text strong {
+  font-weight: 900;
+  text-decoration: underline;
+  text-decoration-style: solid;
+  text-underline-offset: 2px;
+}
+
+.dev-sparkle {
+  font-size: 16px;
+  animation: subtleSpark 3s linear infinite;
+}
+
+@keyframes subtleSpark {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.dev-credit::before {
+  content: 'Connect on LinkedIn';
+  position: absolute;
+  bottom: 110%;
+  right: 0;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s;
+  transform: translateY(5px);
+}
+
+.dev-credit::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  right: 18px;
+  border: 5px solid transparent;
+  border-top-color: rgba(0, 0, 0, 0.85);
+  opacity: 0;
+  transition: all 0.3s;
+}
+
+.dev-credit:hover::before,
+.dev-credit:hover::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .dev-credit {
+    bottom: 12px;
+    right: 12px;
+    padding: 8px 14px;
+    font-size: 10px;
+  }
+
+  .dev-text {
+    display: none;
+  }
+
+  .dev-icon {
+    font-size: 20px;
+  }
+
+  .dev-sparkle {
+    font-size: 14px;
+  }
+}
+
+@media print {
+  .dev-credit {
+    display: none;
+  }
+}
