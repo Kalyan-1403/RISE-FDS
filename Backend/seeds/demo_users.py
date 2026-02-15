@@ -1,62 +1,74 @@
+"""
+Demo user seeder - ONLY FOR DEVELOPMENT
+Production: Create admin via secure admin creation script
+"""
 from models import db, User
-from werkzeug.security import generate_password_hash
+import os
 
 def seed_demo_users(app):
-    """Seed database with demo users"""
+    """Seed demo users - ONLY run in development"""
     
-    with app.app_context():
-        # Check if admin already exists
-        if User.query.filter_by(user_id='ADMIN_MASTER').first():
-            print("✅ Demo users already exist!")
-            return
+    # Check environment
+    if os.environ.get('FLASK_ENV') == 'production':
+        print("⚠️  WARNING: Cannot seed demo users in production!")
+        print("Use the admin creation script instead.")
+        return
+    
+    print("🌱 Seeding development users...")
+    
+    # Check if users already exist
+    if User.query.count() > 0:
+        print("✅ Users already exist. Skipping seed.")
+        return
+    
+    # Admin user (development only)
+    admin = User(
+        user_id='DEV_ADMIN',
+        name='Development Admin',
+        email='admin@dev.local',
+        mobile='9999999999',
+        college=None,
+        department=None,
+        role='admin'
+    )
+    admin.set_password('DevAdmin@123')  # Change in .env
+    
+    # Development HoD users
+    hods = [
+        # Gandhi College
+        {'user_id': 'DEV-CSE-G', 'name': 'CSE HoD Gandhi', 'email': 'cse.g@dev.local', 'mobile': '9000000001', 'college': 'Gandhi', 'department': 'CSE'},
+        {'user_id': 'DEV-ECE-G', 'name': 'ECE HoD Gandhi', 'email': 'ece.g@dev.local', 'mobile': '9000000002', 'college': 'Gandhi', 'department': 'ECE'},
+        {'user_id': 'DEV-EEE-G', 'name': 'EEE HoD Gandhi', 'email': 'eee.g@dev.local', 'mobile': '9000000003', 'college': 'Gandhi', 'department': 'EEE'},
+        {'user_id': 'DEV-MECH-G', 'name': 'MECH HoD Gandhi', 'email': 'mech.g@dev.local', 'mobile': '9000000004', 'college': 'Gandhi', 'department': 'MECH'},
+        {'user_id': 'DEV-CIVIL-G', 'name': 'CIVIL HoD Gandhi', 'email': 'civil.g@dev.local', 'mobile': '9000000005', 'college': 'Gandhi', 'department': 'CIVIL'},
+        {'user_id': 'DEV-SH-G', 'name': 'S&H HoD Gandhi', 'email': 'sh.g@dev.local', 'mobile': '9000000006', 'college': 'Gandhi', 'department': 'S&H'},
         
-        # Create Admin
-        admin = User(
-            user_id='ADMIN_MASTER',
-            name='Master Admin',
-            email='admin@rise.edu.in',
-            mobile='9999999999',
-            college=None,
-            department=None,
-            role='admin'
-        )
-        admin.set_password('admin@123')
-        db.session.add(admin)
-        
-        # Create HoDs
-        hods = [
-            # Gandhi College
-            {'college': 'Gandhi', 'dept': 'CSE', 'userId': 'CSE-G_HOD', 'password': 'hod@123', 'name': 'Gandhi CSE HoD', 'email': 'cse.gandhi@rise.edu.in', 'mobile': '9000000001'},
-            {'college': 'Gandhi', 'dept': 'ECE', 'userId': 'ECE-G_HOD', 'password': 'hod@123', 'name': 'Gandhi ECE HoD', 'email': 'ece.gandhi@rise.edu.in', 'mobile': '9000000002'},
-            {'college': 'Gandhi', 'dept': 'S&H', 'userId': 'SH-G_HOD', 'password': 'hod@123', 'name': 'Gandhi S&H HoD', 'email': 'sh.gandhi@rise.edu.in', 'mobile': '9000000003'},
-            
-            # Prakasam College
-            {'college': 'Prakasam', 'dept': 'S&H', 'userId': 'SH-P_HOD', 'password': 'hod@123', 'name': 'Prakasam S&H HoD', 'email': 'sh.prakasam@rise.edu.in', 'mobile': '9000000004'},
-            {'college': 'Prakasam', 'dept': 'CSE', 'userId': 'CSE-P_HOD', 'password': 'hod@123', 'name': 'Prakasam CSE HoD', 'email': 'cse.prakasam@rise.edu.in', 'mobile': '9000000005'},
-            {'college': 'Prakasam', 'dept': 'ECE', 'userId': 'ECE-P_HOD', 'password': 'hod@123', 'name': 'Prakasam ECE HoD', 'email': 'ece.prakasam@rise.edu.in', 'mobile': '9000000006'},
-            {'college': 'Prakasam', 'dept': 'EEE', 'userId': 'EEE-P_HOD', 'password': 'hod@123', 'name': 'Prakasam EEE HoD', 'email': 'eee.prakasam@rise.edu.in', 'mobile': '9000000007'},
-            {'college': 'Prakasam', 'dept': 'CIVIL', 'userId': 'CIVIL-P_HOD', 'password': 'hod@123', 'name': 'Prakasam CIVIL HoD', 'email': 'civil.prakasam@rise.edu.in', 'mobile': '9000000008'},
-            {'college': 'Prakasam', 'dept': 'MECH', 'userId': 'MECH-P_HOD', 'password': 'hod@123', 'name': 'Prakasam MECH HoD', 'email': 'mech.prakasam@rise.edu.in', 'mobile': '9000000009'},
-            {'college': 'Prakasam', 'dept': 'MBA', 'userId': 'MBA-P_HOD', 'password': 'hod@123', 'name': 'Prakasam MBA HoD', 'email': 'mba.prakasam@rise.edu.in', 'mobile': '9000000010'},
-            {'college': 'Prakasam', 'dept': 'MCA', 'userId': 'MCA-P_HOD', 'password': 'hod@123', 'name': 'Prakasam MCA HoD', 'email': 'mca.prakasam@rise.edu.in', 'mobile': '9000000011'},
-            {'college': 'Prakasam', 'dept': 'M.TECH', 'userId': 'MTECH-P_HOD', 'password': 'hod@123', 'name': 'Prakasam M.TECH HoD', 'email': 'mtech.prakasam@rise.edu.in', 'mobile': '9000000012'},
-        ]
-        
-        for hod_data in hods:
-            hod = User(
-                user_id=hod_data['userId'],
-                name=hod_data['name'],
-                email=hod_data['email'],
-                mobile=hod_data['mobile'],
-                college=hod_data['college'],
-                department=hod_data['dept'],
-                role='hod'
-            )
-            hod.set_password(hod_data['password'])
-            db.session.add(hod)
-        
+        # Prakasam College
+        {'user_id': 'DEV-CSE-P', 'name': 'CSE HoD Prakasam', 'email': 'cse.p@dev.local', 'mobile': '9000000011', 'college': 'Prakasam', 'department': 'CSE'},
+        {'user_id': 'DEV-ECE-P', 'name': 'ECE HoD Prakasam', 'email': 'ece.p@dev.local', 'mobile': '9000000012', 'college': 'Prakasam', 'department': 'ECE'},
+        {'user_id': 'DEV-EEE-P', 'name': 'EEE HoD Prakasam', 'email': 'eee.p@dev.local', 'mobile': '9000000013', 'college': 'Prakasam', 'department': 'EEE'},
+        {'user_id': 'DEV-MECH-P', 'name': 'MECH HoD Prakasam', 'email': 'mech.p@dev.local', 'mobile': '9000000014', 'college': 'Prakasam', 'department': 'MECH'},
+    ]
+    
+    # Get dev password from environment or use default
+    dev_password = os.environ.get('DEV_PASSWORD', 'DevHod@123')
+    
+    db.session.add(admin)
+    
+    for hod_data in hods:
+        hod = User(**hod_data, role='hod')
+        hod.set_password(dev_password)
+        db.session.add(hod)
+    
+    try:
         db.session.commit()
-        print("✅ Demo users created successfully!")
-        print("\n📋 Login Credentials:")
-        print("Admin: ADMIN_MASTER / admin@123")
-        print("HoDs: {DEPT}-{G/P}_HOD / hod@123")
+        print(f"✅ Created 1 admin and {len(hods)} HoD users")
+        print("\n" + "="*60)
+        print("🔑 DEVELOPMENT CREDENTIALS")
+        print("="*60)
+        print(f"Admin: DEV_ADMIN / {dev_password}")
+        print(f"HoDs: DEV-<DEPT>-<G/P> / {dev_password}")
+        print("="*60)
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error seeding users: {str(e)}")

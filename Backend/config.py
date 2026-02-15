@@ -5,48 +5,16 @@ from datetime import timedelta
 load_dotenv()
 
 class Config:
-    """Base configuration - Production Safe"""
-    
-    # CRITICAL: These MUST be set via environment variables in production
-    # No default fallbacks for security-critical values
-    SECRET_KEY = os.environ.get('SECRET_KEY')
-    if not SECRET_KEY:
-        raise ValueError("No SECRET_KEY set for Flask application. Set it as environment variable.")
-    
+    """Base configuration"""
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
-    # Database Configuration
-    DB_HOST = os.environ.get('DB_HOST')
-    DB_PORT = os.environ.get('DB_PORT', '5432')
-    DB_NAME = os.environ.get('DB_NAME')
-    DB_USER = os.environ.get('DB_USER')
-    DB_PASSWORD = os.environ.get('DB_PASSWORD')
-    
-    # Validate database config in production
-    if not all([DB_HOST, DB_NAME, DB_USER]):
-        raise ValueError("Database configuration incomplete. Set DB_HOST, DB_NAME, DB_USER environment variables.")
-    
-    SQLALCHEMY_DATABASE_URI = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
-    
-    # JWT Configuration - CRITICAL: Must be strong and unique
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
-    if not JWT_SECRET_KEY:
-        raise ValueError("No JWT_SECRET_KEY set. Set it as environment variable.")
-    
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)  # Reduced from 24 hours
+    # JWT Configuration
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     JWT_HEADER_TYPE = 'Bearer'
     
-    # CORS - Strict origins in production
-    CORS_ORIGINS = os.environ.get('FRONTEND_URL', 'http://localhost:5173').split(',')
-    
-    # Rate Limiting - Use Redis in production
-    RATELIMIT_STORAGE_URL = os.environ.get('REDIS_URL', 'memory://')
-    RATELIMIT_DEFAULT = "200 per day"
-    RATELIMIT_HEADERS_ENABLED = True
-    
     # File Upload
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
     
     # Email Configuration
@@ -62,7 +30,6 @@ class Config:
     SMS_SENDER_ID = os.environ.get('SMS_SENDER_ID', 'RISEFDS')
     
     # Security Settings
-    SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     
@@ -76,15 +43,11 @@ class Config:
 
 
 class DevelopmentConfig(Config):
-    """Development configuration - ONLY for local development"""
+    """Development configuration"""
     DEBUG = True
     TESTING = False
     
-    # Override strict checks for development only
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-NEVER-USE-IN-PRODUCTION')
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-key-NEVER-USE-IN-PRODUCTION')
-    
-    # Allow local database defaults
+    # Database
     DB_HOST = os.environ.get('DB_HOST', 'localhost')
     DB_PORT = os.environ.get('DB_PORT', '5432')
     DB_NAME = os.environ.get('DB_NAME', 'rise_fds')
@@ -93,23 +56,59 @@ class DevelopmentConfig(Config):
     
     SQLALCHEMY_DATABASE_URI = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
     
-    # Relaxed security for development
+    # Security keys
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-NEVER-USE-IN-PRODUCTION')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-key-NEVER-USE-IN-PRODUCTION')
+    
+    # CRITICAL: Use in-memory rate limiting for development (no Redis)
+    RATELIMIT_STORAGE_URL = "memory://"
+    RATELIMIT_DEFAULT = "200 per day"
+    RATELIMIT_HEADERS_ENABLED = True
+    
+    # CORS - Allow local development
+    CORS_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000']
+    
+    # Relaxed security
     SESSION_COOKIE_SECURE = False
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
-    CORS_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000']
 
 
 class ProductionConfig(Config):
-    """Production configuration - Maximum security"""
+    """Production configuration"""
     DEBUG = False
     TESTING = False
     
-    # Ensure HTTPS in production
+    # Require all production values
+    SECRET_KEY = os.environ.get('SECRET_KEY')
+    if not SECRET_KEY:
+        raise ValueError("No SECRET_KEY set for production")
+    
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
+    if not JWT_SECRET_KEY:
+        raise ValueError("No JWT_SECRET_KEY set for production")
+    
+    # Database
+    DB_HOST = os.environ.get('DB_HOST')
+    DB_PORT = os.environ.get('DB_PORT', '5432')
+    DB_NAME = os.environ.get('DB_NAME')
+    DB_USER = os.environ.get('DB_USER')
+    DB_PASSWORD = os.environ.get('DB_PASSWORD')
+    
+    if not all([DB_HOST, DB_NAME, DB_USER]):
+        raise ValueError("Database configuration incomplete")
+    
+    SQLALCHEMY_DATABASE_URI = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+    
+    # Redis for rate limiting in production
+    RATELIMIT_STORAGE_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    RATELIMIT_DEFAULT = "100 per day"
+    
+    # CORS
+    CORS_ORIGINS = os.environ.get('FRONTEND_URL', 'http://localhost:5173').split(',')
+    
+    # Strict security
     SESSION_COOKIE_SECURE = True
     PREFERRED_URL_SCHEME = 'https'
-    
-    # Stricter rate limiting
-    RATELIMIT_DEFAULT = "100 per day"
 
 
 class TestingConfig(Config):
@@ -120,6 +119,7 @@ class TestingConfig(Config):
     JWT_SECRET_KEY = 'test-jwt-key'
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     SESSION_COOKIE_SECURE = False
+    RATELIMIT_STORAGE_URL = "memory://"
 
 
 config = {

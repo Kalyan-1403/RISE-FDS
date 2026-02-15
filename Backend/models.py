@@ -243,7 +243,7 @@ class OTP(db.Model):
     user_id = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(120), nullable=False)
     mobile = db.Column(db.String(15), nullable=False)
-    otp_code = db.Column(db.String(6), nullable=False)
+    otp_code = db.Column(db.String(255), nullable=False)  # Changed: Store hashed OTP (SHA256)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     expires_at = db.Column(db.DateTime, nullable=False)
     is_used = db.Column(db.Boolean, default=False)
