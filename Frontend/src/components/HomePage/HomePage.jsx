@@ -1,4 +1,4 @@
-import { authAPI } from '../../services/api';
+import dataService from '../../services/dataService.js';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './HomePage.css';
@@ -8,31 +8,8 @@ import DeveloperCredit from '../DeveloperCredit/DeveloperCredit.jsx';
 
 const departmentsByCollege = {
   Gandhi: ['S&H', 'CSE', 'ECE'],
-  Prakasam: ['S&H', 'CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'MBA', 'MCA', 'M.TECH']
+  Prakasam: ['S&H', 'CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'MBA', 'MCA', 'M.TECH'],
 };
-
-// Demo credentials
-const DEMO_ADMIN = {
-  userId: 'ADMIN_MASTER',
-  password: 'admin@123',
-  name: 'Master Admin',
-};
-
-const DEMO_HODS = [
-  { college: 'Gandhi', dept: 'CSE', userId: 'CSE-G_HOD', password: 'hod@123', name: 'Gandhi CSE HoD' },
-  { college: 'Gandhi', dept: 'ECE', userId: 'ECE-G_HOD', password: 'hod@123', name: 'Gandhi ECE HoD' },
-  { college: 'Gandhi', dept: 'S&H', userId: 'SH-G_HOD', password: 'hod@123', name: 'Gandhi S&H HoD' },
-
-  { college: 'Prakasam', dept: 'S&H', userId: 'SH-P_HOD', password: 'hod@123', name: 'Prakasam S&H HoD' },
-  { college: 'Prakasam', dept: 'CSE', userId: 'CSE-P_HOD', password: 'hod@123', name: 'Prakasam CSE HoD' },
-  { college: 'Prakasam', dept: 'ECE', userId: 'ECE-P_HOD', password: 'hod@123', name: 'Prakasam ECE HoD' },
-  { college: 'Prakasam', dept: 'EEE', userId: 'EEE-P_HOD', password: 'hod@123', name: 'Prakasam EEE HoD' },
-  { college: 'Prakasam', dept: 'CIVIL', userId: 'CIVIL-P_HOD', password: 'hod@123', name: 'Prakasam CIVIL HoD' },
-  { college: 'Prakasam', dept: 'MECH', userId: 'MECH-P_HOD', password: 'hod@123', name: 'Prakasam MECH HoD' },
-  { college: 'Prakasam', dept: 'MBA', userId: 'MBA-P_HOD', password: 'hod@123', name: 'Prakasam MBA HoD' },
-  { college: 'Prakasam', dept: 'MCA', userId: 'MCA-P_HOD', password: 'hod@123', name: 'Prakasam MCA HoD' },
-  { college: 'Prakasam', dept: 'M.TECH', userId: 'MTECH-P_HOD', password: 'hod@123', name: 'Prakasam M.TECH HoD' },
-];
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -40,6 +17,7 @@ const HomePage = () => {
   const [selectedRole, setSelectedRole] = useState('hod');
   const [selectedCollege, setSelectedCollege] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [collegeConfirmed, setCollegeConfirmed] = useState(false);
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -51,24 +29,31 @@ const HomePage = () => {
   const handleCollegeChange = (e) => {
     setSelectedCollege(e.target.value);
     setSelectedDepartment('');
+    setCollegeConfirmed(false);
     setError('');
   };
 
   const handleDepartmentChange = (e) => {
-    setSelectedDepartment(e.target.value);
+    const dept = e.target.value;
+    setSelectedDepartment(dept);
     setError('');
+    if (dept && selectedCollege) {
+      setCollegeConfirmed(true);
+    }
   };
 
   const handleRoleChange = (role) => {
     setSelectedRole(role);
     setSelectedCollege('');
     setSelectedDepartment('');
+    setCollegeConfirmed(false);
     setUserId('');
     setPassword('');
     setError('');
   };
 
   const handleBack = () => {
+    setCollegeConfirmed(false);
     setSelectedCollege('');
     setSelectedDepartment('');
     setUserId('');
@@ -77,73 +62,69 @@ const HomePage = () => {
   };
 
   const handleLogin = async (e) => {
-  e.preventDefault();
-  setError('');
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setError('');
 
-  if (!userId.trim()) {
-    setError('Please enter your User ID');
-    return;
-  }
-  if (!password) {
-    setError('Please enter your password');
-    return;
-  }
+    if (!userId.trim()) {
+      setError('Please enter your User ID');
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password');
+      return;
+    }
 
-  setIsLoading(true);
-
-  try {
-    // Prepare login data
-    const loginData = {
-      user_id: userId.trim(),
-      password: password,
-      role: selectedRole,
-    };
-
-    // Add college and department for HoD login
     if (selectedRole === 'hod') {
       if (!selectedCollege || !selectedDepartment) {
         setError('Please select college and department');
-        setIsLoading(false);
         return;
       }
-      loginData.college = selectedCollege;
-      loginData.department = selectedDepartment;
     }
 
-    // Call backend API
-    const response = await authAPI.login(loginData);
+    setIsLoading(true);
 
-    if (response.data.success) {
-      // Store token
-      localStorage.setItem('access_token', response.data.access_token);
-      
-      // Store user data
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+    try {
+      const loginData = {
+        user_id: userId.trim(),
+        password: password,
+        role: selectedRole,
+      };
 
-      // Navigate based on role
-      if (response.data.user.role === 'admin') {
-        navigate('/admin/dashboard');
-      } else {
-        navigate('/hod/dashboard');
+      if (selectedRole === 'hod') {
+        loginData.college = selectedCollege;
+        loginData.department = selectedDepartment;
       }
-    }
-  } catch (error) {
-    console.error('Login error:', error);
-    if (error.response) {
-      setError(error.response.data.error || 'Login failed');
-    } else {
-      setError('Network error. Please check if backend is running.');
-    }
-  } finally {
-    setIsLoading(false);
-  }
-};
-  const showCollegeDepartment =
-    selectedRole === 'hod' && (!selectedCollege || !selectedDepartment);
 
-  const showCredentials =
-    selectedRole === 'admin' ||
-    (selectedRole === 'hod' && selectedCollege && selectedDepartment);
+      const result = await dataService.login(loginData);
+
+      if (result && result.success) {
+        if (result.user.role === 'admin') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/hod/dashboard');
+        }
+      } else {
+        setError('Login failed. Please check your credentials.');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      if (err.response && err.response.data && err.response.data.error) {
+        setError(err.response.data.error);
+      } else if (err.message) {
+        setError(err.message);
+      } else {
+        setError('Login failed. Please check your credentials.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const needsCollegeSelection = selectedRole === 'hod' && !collegeConfirmed;
+  const showCredentials = selectedRole === 'admin' || (selectedRole === 'hod' && collegeConfirmed);
 
   return (
     <div className="login-page">
@@ -168,6 +149,7 @@ const HomePage = () => {
 
         <div className="role-selector">
           <button
+            type="button"
             className={`role-btn ${selectedRole === 'hod' ? 'active' : ''}`}
             onClick={() => handleRoleChange('hod')}
           >
@@ -175,6 +157,7 @@ const HomePage = () => {
             <span>HoD</span>
           </button>
           <button
+            type="button"
             className={`role-btn ${selectedRole === 'admin' ? 'active' : ''}`}
             onClick={() => handleRoleChange('admin')}
           >
@@ -183,125 +166,120 @@ const HomePage = () => {
           </button>
         </div>
 
-        <form className="login-form" onSubmit={handleLogin}>
-          {showCollegeDepartment && (
-            <>
-              <div className="input-group">
-                <label>
-                  <span className="label-icon">🏫</span>
-                  Select College
-                </label>
-                <select
-                  value={selectedCollege}
-                  onChange={handleCollegeChange}
-                  required
-                  className="college-select"
-                >
-                  <option value="">Choose College</option>
-                  <option value="Gandhi">Gandhi</option>
-                  <option value="Prakasam">Prakasam</option>
-                </select>
-              </div>
-
-              <div className="input-group">
-                <label>
-                  <span className="label-icon">📖</span>
-                  Select Department
-                </label>
-                <select
-                  value={selectedDepartment}
-                  onChange={handleDepartmentChange}
-                  required
-                  disabled={!selectedCollege}
-                  className="department-select"
-                >
-                  <option value="">Choose Department</option>
-                  {selectedCollege &&
-                    departmentsByCollege[selectedCollege].map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            </>
-          )}
-
-          {selectedRole === 'hod' && selectedCollege && selectedDepartment && (
-            <div className="selection-info">
-              <div className="info-row">
-                <span className="info-label">🏫 College:</span>
-                <span className="info-value">{selectedCollege}</span>
-              </div>
-              <div className="info-row">
-                <span className="info-label">📖 Department:</span>
-                <span className="info-value">{selectedDepartment}</span>
-              </div>
-              <button
-                type="button"
-                className="change-btn"
-                onClick={handleBack}
+        {needsCollegeSelection && (
+          <div className="login-form">
+            <div className="input-group">
+              <label>
+                <span className="label-icon">🏫</span>
+                Select College
+              </label>
+              <select
+                value={selectedCollege}
+                onChange={handleCollegeChange}
+                className="college-select"
               >
-                Change
-              </button>
+                <option value="">Choose College</option>
+                <option value="Gandhi">Gandhi</option>
+                <option value="Prakasam">Prakasam</option>
+              </select>
             </div>
-          )}
 
-          {showCredentials && (
-            <>
-              <div className="input-group">
-                <label>
-                  <span className="label-icon">👤</span>
-                  User ID
-                </label>
+            <div className="input-group">
+              <label>
+                <span className="label-icon">📖</span>
+                Select Department
+              </label>
+              <select
+                value={selectedDepartment}
+                onChange={handleDepartmentChange}
+                disabled={!selectedCollege}
+                className="department-select"
+              >
+                <option value="">Choose Department</option>
+                {selectedCollege &&
+                  departmentsByCollege[selectedCollege].map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {showCredentials && (
+          <form
+            className="login-form"
+            onSubmit={handleLogin}
+          >
+            {selectedRole === 'hod' && (
+              <div className="selection-info">
+                <div className="info-row">
+                  <span className="info-label">🏫 College:</span>
+                  <span className="info-value">{selectedCollege}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-label">📖 Department:</span>
+                  <span className="info-value">{selectedDepartment}</span>
+                </div>
+                <button
+                  type="button"
+                  className="change-btn"
+                  onClick={handleBack}
+                >
+                  Change
+                </button>
+              </div>
+            )}
+
+            <div className="input-group">
+              <label>
+                <span className="label-icon">👤</span>
+                User ID
+              </label>
+              <input
+                type="text"
+                value={userId}
+                onChange={(e) => {
+                  setUserId(e.target.value);
+                  setError('');
+                }}
+                placeholder="Enter your User ID"
+              />
+            </div>
+
+            <div className="input-group">
+              <label>
+                <span className="label-icon">🔒</span>
+                Password
+              </label>
+              <div className="password-input-wrapper">
                 <input
-                  type="text"
-                  value={userId}
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
                   onChange={(e) => {
-                    setUserId(e.target.value);
+                    setPassword(e.target.value);
                     setError('');
                   }}
-                  placeholder="Enter your User ID"
-                  required
+                  placeholder="Enter your password"
                 />
+                <button
+                  type="button"
+                  className="eye-toggle-login"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
               </div>
-
-              <div className="input-group">
-                <label>
-                  <span className="label-icon">🔒</span>
-                  Password
-                </label>
-                <div className="password-input-wrapper">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      setError('');
-                    }}
-                    placeholder="Enter your password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="eye-toggle-login"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? '👁️' : '👁️‍🗨️'}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {error && (
-            <div className="error-alert">
-              <span className="error-icon">⚠️</span>
-              <span>{error}</span>
             </div>
-          )}
 
-          {showCredentials && (
+            {error && (
+              <div className="error-alert">
+                <span className="error-icon">⚠️</span>
+                <span>{error}</span>
+              </div>
+            )}
+
             <button
               type="submit"
               className="login-submit-btn"
@@ -319,8 +297,8 @@ const HomePage = () => {
                 </>
               )}
             </button>
-          )}
-        </form>
+          </form>
+        )}
 
         <div className="login-footer">
           <p className="footer-text">

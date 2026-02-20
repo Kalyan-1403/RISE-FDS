@@ -63,6 +63,22 @@ const RegisterModal = ({ onClose }) => {
     e.preventDefault();
     
     if (validateForm()) {
+      // Check if department already has an HoD registered
+      const existingUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      const duplicate = existingUsers.find(
+        (u) =>
+          u.role === 'hod' &&
+          u.college === formData.college &&
+          u.department === formData.department
+      );
+
+      if (duplicate) {
+        alert(
+          `🚨 IMPOSTER ALERT!\n\nAn HoD account for ${formData.college} College - ${formData.department} Department already exists!\n\nOnly ONE HoD registration is allowed per department.\n\nIf you believe this is an error, please contact the Master Admin.`
+        );
+        return;
+      }
+
       const userId = generateUserId();
       setGeneratedUserId(userId);
       setShowPasswordPage(true);
@@ -106,104 +122,106 @@ const RegisterModal = ({ onClose }) => {
           <p>Join RISE Feedback Management System</p>
         </div>
 
-        <form className="register-form" onSubmit={handleSubmit}>
-          {/* Name */}
-          <div className="form-field">
-            <label>
-              <span className="field-icon">👤</span>
-              Full Name
-            </label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="Enter your full name"
-              className={errors.name ? 'error' : ''}
-            />
-            {errors.name && <span className="error-text">{errors.name}</span>}
-          </div>
+                <div className="modal-body">
+          <form className="register-form" onSubmit={handleSubmit}>
+            {/* Name */}
+            <div className="form-field">
+              <label>
+                <span className="field-icon">👤</span>
+                Full Name
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="Enter your full name"
+                className={errors.name ? 'error' : ''}
+              />
+              {errors.name && <span className="error-text">{errors.name}</span>}
+            </div>
 
-          {/* College */}
-          <div className="form-field">
-            <label>
-              <span className="field-icon">🏫</span>
-              College
-            </label>
-            <select
-              name="college"
-              value={formData.college}
-              onChange={handleChange}
-              className={errors.college ? 'error' : ''}
-            >
-              <option value="">Choose College</option>
-              <option value="Gandhi">Gandhi</option>
-              <option value="Prakasam">Prakasam</option>
-            </select>
-            {errors.college && <span className="error-text">{errors.college}</span>}
-          </div>
+            {/* College */}
+            <div className="form-field">
+              <label>
+                <span className="field-icon">🏫</span>
+                College
+              </label>
+              <select
+                name="college"
+                value={formData.college}
+                onChange={handleChange}
+                className={errors.college ? 'error' : ''}
+              >
+                <option value="">Choose College</option>
+                <option value="Gandhi">Gandhi</option>
+                <option value="Prakasam">Prakasam</option>
+              </select>
+              {errors.college && <span className="error-text">{errors.college}</span>}
+            </div>
 
-          {/* Department */}
-          <div className="form-field">
-            <label>
-              <span className="field-icon">📖</span>
-              Department
-            </label>
-            <select
-              name="department"
-              value={formData.department}
-              onChange={handleChange}
-              disabled={!formData.college}
-              className={errors.department ? 'error' : ''}
-            >
-              <option value="">Choose Department</option>
-              {formData.college && departmentsByCollege[formData.college].map(dept => (
-                <option key={dept} value={dept}>{dept}</option>
-              ))}
-            </select>
-            {errors.department && <span className="error-text">{errors.department}</span>}
-          </div>
+            {/* Department */}
+            <div className="form-field">
+              <label>
+                <span className="field-icon">📖</span>
+                Department
+              </label>
+              <select
+                name="department"
+                value={formData.department}
+                onChange={handleChange}
+                disabled={!formData.college}
+                className={errors.department ? 'error' : ''}
+              >
+                <option value="">Choose Department</option>
+                {formData.college && departmentsByCollege[formData.college].map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+              {errors.department && <span className="error-text">{errors.department}</span>}
+            </div>
 
-          {/* Mobile */}
-          <div className="form-field">
-            <label>
-              <span className="field-icon">📱</span>
-              Mobile Number
-            </label>
-            <input
-              type="tel"
-              name="mobile"
-              value={formData.mobile}
-              onChange={handleChange}
-              placeholder="Enter 10-digit mobile number"
-              maxLength="10"
-              className={errors.mobile ? 'error' : ''}
-            />
-            {errors.mobile && <span className="error-text">{errors.mobile}</span>}
-          </div>
+            {/* Mobile */}
+            <div className="form-field">
+              <label>
+                <span className="field-icon">📱</span>
+                Mobile Number
+              </label>
+              <input
+                type="tel"
+                name="mobile"
+                value={formData.mobile}
+                onChange={handleChange}
+                placeholder="Enter 10-digit mobile number"
+                maxLength="10"
+                className={errors.mobile ? 'error' : ''}
+              />
+              {errors.mobile && <span className="error-text">{errors.mobile}</span>}
+            </div>
 
-          {/* Email */}
-          <div className="form-field">
-            <label>
-              <span className="field-icon">📧</span>
-              Email ID
-            </label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="Enter your email address"
-              className={errors.email ? 'error' : ''}
-            />
-            {errors.email && <span className="error-text">{errors.email}</span>}
-          </div>
+            {/* Email */}
+            <div className="form-field">
+              <label>
+                <span className="field-icon">📧</span>
+                Email ID
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="Enter your email address"
+                className={errors.email ? 'error' : ''}
+              />
+              {errors.email && <span className="error-text">{errors.email}</span>}
+            </div>
 
-          <button type="submit" className="submit-btn">
-            <span>Submit & Register</span>
-            <span className="btn-arrow">→</span>
-          </button>
-        </form>
+            <button type="submit" className="submit-btn">
+              <span>Submit & Register</span>
+              <span className="btn-arrow">→</span>
+            </button>
+          </form>
+	</div>
       </div>
     </div>
   );

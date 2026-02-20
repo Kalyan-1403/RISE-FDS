@@ -1,17 +1,18 @@
 import axios from 'axios';
 
-// Base API URL
-const API_BASE_URL = 'http://localhost:5000/api';
+// Vite uses import.meta.env for environment variables
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
-// Create axios instance
+// Create axios instance with production-safe defaults
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 second timeout
 });
 
-// Add token to requests if available
+// Request interceptor — attach JWT token automatically
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -20,75 +21,84 @@ api.interceptors.request.use(
     }
     return config;
   },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor — handle token expiry globally
+api.interceptors.response.use(
+  (response) => response,
   (error) => {
+    if (error.response && error.response.status === 401) {
+      const code = error.response.data?.code;
+      if (code === 'TOKEN_EXPIRED' || code === 'INVALID_TOKEN') {
+        // Token expired or invalid — force logout
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
+    }
     return Promise.reject(error);
   }
 );
 
-// Auth APIs
+// ========================
+// AUTH APIs
+// ========================
 export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   register: (data) => api.post('/auth/register', data),
-  createAccount: (data) => api.post('/auth/create-account', data),
-  verifyUser: (userId) => api.post('/auth/verify-user', { user_id: userId }),
-  sendOTP: (data) => api.post('/auth/forgot-password/send-otp', data),
-  verifyOTP: (data) => api.post('/auth/forgot-password/verify-otp', data),
-  resetPassword: (data) => api.post('/auth/forgot-password/reset', data),
-  getCurrentUser: () => api.get('/auth/me'),
+  me: () => api.get('/auth/me'),
+  refresh: () => api.post('/auth/refresh'),
 };
 
-// Faculty APIs
+// ========================
+// FACULTY APIs
+// ========================
 export const facultyAPI = {
   getAll: () => api.get('/faculty'),
   getById: (id) => api.get(`/faculty/${id}`),
   create: (data) => api.post('/faculty', data),
   update: (id, data) => api.put(`/faculty/${id}`, data),
   delete: (id) => api.delete(`/faculty/${id}`),
-  getByBranch: (branch) => api.get(`/faculty/by-branch/${branch}`),
-  getByYear: (year) => api.get(`/faculty/by-year/${year}`),
 };
 
-// Batch APIs
+// ========================
+// BATCH APIs
+// ========================
 export const batchAPI = {
   create: (data) => api.post('/batch/create', data),
   getById: (batchId) => api.get(`/batch/${batchId}`),
-  getList: () => api.get('/batch/list'),
-  getDetails: (batchId) => api.get(`/batch/${batchId}/details`),
-  getFaculty: (batchId) => api.get(`/batch/${batchId}/faculty`),
+  list: () => api.get('/batch/list'),
 };
 
-// Feedback APIs
+// ========================
+// FEEDBACK APIs
+// ========================
 export const feedbackAPI = {
   submit: (data) => api.post('/feedback/submit', data),
-  getBatchCount: (batchId) => api.get(`/feedback/batch/${batchId}/count`),
   getFacultyStats: (facultyId) => api.get(`/feedback/faculty/${facultyId}/stats`),
-  getBatchStats: (batchId) => api.get(`/feedback/batch/${batchId}/stats`),
 };
 
-// Dashboard APIs
+// ========================
+// DASHBOARD APIs
+// ========================
 export const dashboardAPI = {
-  getHoDDashboard: () => api.get('/dashboard/hod'),
-  getAdminDashboard: () => api.get('/dashboard/admin'),
-  getFacultyAnalytics: () => api.get('/dashboard/faculty-analytics'),
+  getAdmin: () => api.get('/dashboard/admin'),
+  getHoD: () => api.get('/dashboard/hod'),
 };
 
-// Reports APIs
+// ========================
+// REPORTS APIs
+// ========================
 export const reportsAPI = {
-  getFacultyExcel: (facultyId) => {
-    return api.get(`/reports/faculty/${facultyId}/excel`, {
-      responseType: 'blob',
-    });
-  },
-  getFacultyPDF: (facultyId) => {
-    return api.get(`/reports/faculty/${facultyId}/pdf`, {
-      responseType: 'blob',
-    });
-  },
-  getBatchExcel: (batchId) => {
-    return api.get(`/reports/batch/${batchId}/excel`, {
-      responseType: 'blob',
-    });
-  },
+  getFacultyData: (facultyId) => api.get(`/reports/faculty/${facultyId}/data`),
+};
+
+// ========================
+// HEALTH CHECK
+// ========================
+export const healthAPI = {
+  check: () => api.get('/health'),
 };
 
 export default api;

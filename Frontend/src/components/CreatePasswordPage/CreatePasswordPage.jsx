@@ -13,14 +13,14 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
   const [showConfetti, setShowConfetti] = useState(false);
   const [windowSize, setWindowSize] = useState({
     width: window.innerWidth,
-    height: window.innerHeight
+    height: window.innerHeight,
   });
 
   useEffect(() => {
     const handleResize = () => {
       setWindowSize({
         width: window.innerWidth,
-        height: window.innerHeight
+        height: window.innerHeight,
       });
     };
 
@@ -46,9 +46,12 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
   };
 
   const getStrengthData = () => {
-    if (passwordStrength < 25) return { level: 'weak', emoji: '😰', color: '#e74c3c', text: 'Too Weak!' };
-    if (passwordStrength < 50) return { level: 'fair', emoji: '😐', color: '#f39c12', text: 'Fair' };
-    if (passwordStrength < 75) return { level: 'good', emoji: '😊', color: '#3498db', text: 'Good' };
+    if (passwordStrength < 25)
+      return { level: 'weak', emoji: '😰', color: '#e74c3c', text: 'Too Weak!' };
+    if (passwordStrength < 50)
+      return { level: 'fair', emoji: '😐', color: '#f39c12', text: 'Fair' };
+    if (passwordStrength < 75)
+      return { level: 'good', emoji: '😊', color: '#3498db', text: 'Good' };
     return { level: 'strong', emoji: '🦸', color: '#2ecc71', text: 'Super Strong!' };
   };
 
@@ -69,6 +72,26 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
       setError('Please choose a stronger password');
       return;
     }
+
+    // Save user to registeredUsers in localStorage
+    const newUser = {
+      userId: userId,
+      password: password,
+      name: userData.name,
+      role: 'hod',
+      college: userData.college,
+      department: userData.department,
+      mobile: userData.mobile,
+      email: userData.email,
+      createdAt: new Date().toISOString(),
+    };
+
+    const existingUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+    existingUsers.push(newUser);
+    localStorage.setItem('registeredUsers', JSON.stringify(existingUsers));
+
+    console.log('✅ User registered:', newUser);
+    console.log('📦 All users now:', existingUsers);
 
     // Show success animation
     setShowConfetti(true);
@@ -101,7 +124,9 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
           <h2>Account Created Successfully!</h2>
           <p>Welcome to RISE Feedback Management System</p>
           <div className="success-details">
-            <p><strong>Your User ID:</strong> {userId}</p>
+            <p>
+              <strong>Your User ID:</strong> {userId}
+            </p>
             <p className="redirect-text">Redirecting to login page...</p>
           </div>
         </div>
@@ -112,7 +137,9 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
   return (
     <div className="modal-overlay">
       <div className="modal-content password-page">
-        <button className="modal-close-btn" onClick={onClose}>×</button>
+        <button className="modal-close-btn" onClick={onClose}>
+          ×
+        </button>
 
         <div className="password-header">
           <div className="header-icon">🔐</div>
@@ -124,94 +151,96 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
           <p className="save-notice">⚠️ Please save this User ID for future logins</p>
         </div>
 
-        <form className="password-form" onSubmit={handleSubmit}>
-          {/* Password Field */}
-          <div className="form-field">
-            <label>
-              <span className="field-icon">🔒</span>
-              Enter Password
-            </label>
-            <div className="password-input-wrapper">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={handlePasswordChange}
-                placeholder="Create a strong password"
-                required
-              />
-              <button
-                type="button"
-                className="eye-toggle"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? '👁️' : '👁️‍🗨️'}
-              </button>
-            </div>
+        <div className="password-form-scroll">
+          <form className="password-form" onSubmit={handleSubmit}>
+            {/* Password Field */}
+            <div className="form-field">
+              <label>
+                <span className="field-icon">🔒</span>
+                Enter Password
+              </label>
+              <div className="password-input-wrapper">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={handlePasswordChange}
+                  placeholder="Create a strong password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="eye-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
 
-            {/* Strength Meter */}
-            {password && (
-              <div className="strength-meter">
-                <div className="strength-bar-container">
-                  <div 
-                    className={`strength-bar ${strengthData.level}`}
-                    style={{ 
-                      width: `${passwordStrength}%`,
-                      backgroundColor: strengthData.color
-                    }}
-                  />
-                </div>
-                <div className="strength-indicator">
-                  <div 
-                    className="strength-character"
-                    style={{ color: strengthData.color }}
-                  >
-                    <div className="character-emoji">{strengthData.emoji}</div>
-                    <div className="strength-text">{strengthData.text}</div>
+              {/* Strength Meter */}
+              {password && (
+                <div className="strength-meter">
+                  <div className="strength-bar-container">
+                    <div
+                      className={`strength-bar ${strengthData.level}`}
+                      style={{
+                        width: `${passwordStrength}%`,
+                        backgroundColor: strengthData.color,
+                      }}
+                    />
+                  </div>
+                  <div className="strength-indicator">
+                    <div
+                      className="strength-character"
+                      style={{ color: strengthData.color }}
+                    >
+                      <div className="character-emoji">{strengthData.emoji}</div>
+                      <div className="strength-text">{strengthData.text}</div>
+                    </div>
                   </div>
                 </div>
+              )}
+            </div>
+
+            {/* Confirm Password Field */}
+            <div className="form-field">
+              <label>
+                <span className="field-icon">✅</span>
+                Confirm Password
+              </label>
+              <div className="password-input-wrapper">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="Re-enter your password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="eye-toggle"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="error-message">
+                <span className="error-icon">⚠️</span>
+                {error}
               </div>
             )}
-          </div>
 
-          {/* Confirm Password Field */}
-          <div className="form-field">
-            <label>
-              <span className="field-icon">✅</span>
-              Confirm Password
-            </label>
-            <div className="password-input-wrapper">
-              <input
-                type={showConfirmPassword ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => {
-                  setConfirmPassword(e.target.value);
-                  setError('');
-                }}
-                placeholder="Re-enter your password"
-                required
-              />
-              <button
-                type="button"
-                className="eye-toggle"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              >
-                {showConfirmPassword ? '👁️' : '👁️‍🗨️'}
-              </button>
-            </div>
-          </div>
-
-          {error && (
-            <div className="error-message">
-              <span className="error-icon">⚠️</span>
-              {error}
-            </div>
-          )}
-
-          <button type="submit" className="create-account-btn">
-            <span>Create Account</span>
-            <span className="btn-arrow">✨</span>
-          </button>
-        </form>
+            <button type="submit" className="create-account-btn">
+              <span>Create Account</span>
+              <span className="btn-arrow">✨</span>
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

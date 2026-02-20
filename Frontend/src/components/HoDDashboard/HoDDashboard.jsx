@@ -1,7 +1,11 @@
+import dataService from '../../services/dataService.js';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DeveloperCredit from '../DeveloperCredit/DeveloperCredit.jsx';
 import './HoDDashboard.css';
+import { generateFacultyPDF } from '../../utils/pdfGenerator';
+import { generateFacultyExcel } from '../../utils/excelGenerator';
+
 
 const YEARS = ['II', 'III', 'IV'];
 const SEMESTERS = ['I', 'II'];
@@ -44,18 +48,37 @@ const [slotEndDate, setSlotEndDate] = useState('');
 
 
   useEffect(() => {
-  const user = JSON.parse(localStorage.getItem('user'));
-  if (!user || user.role !== 'hod') {
-    navigate('/');
-  } else {
-    console.log('👤 Loaded User:', user);
-    console.log('🏛️ Department:', user.department);
-    
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (!user || user.role !== 'hod') {
+      navigate('/login');
+      return;
+    }
     setCurrentUser(user);
-    loadFacultyForDepartment(user.college, user.department);
-    loadBatches(user.college, user.department);
-  }
-}, [navigate]);
+
+    // Load from backend, fallback to local
+    const loadData = async () => {
+      try {
+        const dashData = await dataService.getHoDDashboard();
+        if (dashData.faculty && dashData.faculty.length > 0) {
+          setFacultyList(dashData.faculty);
+        } else {
+          // Fallback to local
+          loadFacultyForDepartment(user.college, user.department);
+        }
+      } catch (e) {
+        console.warn('Backend unavailable, loading locally');
+        loadFacultyForDepartment(user.college, user.department);
+      }
+      loadBatches(user.college, user.department);
+    };
+
+    loadData();
+
+    const handleStorageChange = () => loadFacultyForDepartment(user.college, user.department);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [navigate]);
 
 
   // FIXED: Include college in storage key
@@ -157,7 +180,7 @@ const [slotEndDate, setSlotEndDate] = useState('');
 
   const handleLogout = () => {
     localStorage.removeItem('user');
-    navigate('/');
+    navigate('/login', { replace: true });
   };
 
   const addOrUpdateFaculty = () => {
@@ -398,6 +421,80 @@ setSlotEndDate('');
     }
   };
 
+const calculateFacultyStatistics = (feedbackData) => {
+    if (!feedbackData || feedbackData.length === 0) return null;
+
+    const PARAMS = [
+      'Knowledge of the subject', 'Coming well prepared for the class',
+      'Giving clear explanations', 'Command of language', 'Clear and audible voice',
+      'Holding the attention of students through the class',
+      'Providing more matter than in the textbooks',
+      'Capability to clear the doubts of students',
+      'Encouraging students to ask questions and participate',
+      'Appreciating students as and when deserving',
+      'Willingness to help students even out of the class',
+      'Return of valued test papers/records in time',
+      'Punctuality and following timetable schedule',
+      'Coverage of syllabus', 'Impartial (teaching all students alike)',
+    ];
+
+    const totalResponses = feedbackData.length;
+    const slot1Data = feedbackData.filter((f) => f.slot === 1);
+    const slot2Data = feedbackData.filter((f) => f.slot === 2);
+
+    const calculateSlotStats = (slotData) => {
+      if (!slotData || slotData.length === 0) return null;
+      const parameterStats = {};
+      PARAMS.forEach((param) => {
+        const ratings = slotData.map((f) => f.ratings[param]).filter((r) => r !== undefined);
+        const sum = ratings.reduce((a, b) => a + b, 0);
+        const avg = ratings.length > 0 ? sum / ratings.length : 0;
+        const percentage = (avg / 10) * 100;
+        parameterStats[param] = {
+          average: avg.toFixed(2),
+          percentage: percentage.toFixed(1),
+          totalRatings: ratings.length,
+        };
+      });
+      const allRatings = slotData.flatMap((f) => Object.values(f.ratings));
+      const overallAvg = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
+      const ratingDist = {};
+      for (let i = 1; i <= 10; i++) ratingDist[i] = 0;
+      allRatings.forEach((r) => { ratingDist[r] = (ratingDist[r] || 0) + 1; });
+      return { parameterStats, overallAverage: overallAvg.toFixed(2), ratingDistribution: ratingDist, responseCount: slotData.length };
+    };
+
+    return {
+      totalResponses,
+      slot1: calculateSlotStats(slot1Data),
+      slot2: calculateSlotStats(slot2Data),
+      hasSlot1: slot1Data.length > 0,
+      hasSlot2: slot2Data.length > 0,
+    };
+  };
+
+  const handleDownloadPDF = (faculty) => {
+    const feedbackData = dataService.getFacultyFeedback(faculty.id, faculty.year, faculty.sem);
+    const statistics = calculateFacultyStatistics(feedbackData);
+    if (!statistics || feedbackData.length === 0) {
+      alert('⚠️ No feedback data available for this faculty to generate PDF.');
+      return;
+    }
+    const fileName = generateFacultyPDF(faculty, statistics, currentUser.college);
+    alert(`✅ PDF Downloaded: ${fileName}`);
+  };
+
+  const handleDownloadExcel = (faculty) => {
+    const feedbackData = dataService.getFacultyFeedback(faculty.id, faculty.year, faculty.sem);
+    const statistics = calculateFacultyStatistics(feedbackData);
+    if (!statistics || feedbackData.length === 0) {
+      alert('⚠️ No feedback data available for this faculty to generate Excel.');
+      return;
+    }
+    const fileName = generateFacultyExcel(faculty, feedbackData, statistics);
+    alert(`✅ Excel Downloaded: ${fileName}`);
+  };
+
   if (!currentUser) {
     return null;
   }
@@ -613,21 +710,11 @@ setSlotEndDate('');
                           </div>
                         </div>
                         <div className="faculty-actions">
-                          <button
-                            type="button"
-                            className="btn-icon edit"
-                            onClick={() => editFaculty(f)}
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-icon delete"
-                            onClick={() => deleteFaculty(f.id)}
-                          >
-                            🗑️
-                          </button>
-                        </div>
+  <button type="button" className="btn-icon edit" onClick={() => editFaculty(f)} title="Edit">✏️</button>
+  <button type="button" className="btn-icon delete" onClick={() => deleteFaculty(f.id)} title="Delete">🗑️</button>
+  <button type="button" className="btn-icon" onClick={() => handleDownloadPDF(f)} title="Download PDF" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>📄</button>
+  <button type="button" className="btn-icon" onClick={() => handleDownloadExcel(f)} title="Download Excel" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>📊</button>
+</div>
                       </div>
                     ))}
                 </div>
@@ -678,21 +765,11 @@ setSlotEndDate('');
                         </div>
                       </div>
                       <div className="faculty-actions">
-                        <button
-                          type="button"
-                          className="btn-icon edit"
-                          onClick={() => editFaculty(f)}
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-icon delete"
-                          onClick={() => deleteFaculty(f.id)}
-                        >
-                          🗑️
-                        </button>
-                      </div>
+  <button type="button" className="btn-icon edit" onClick={() => editFaculty(f)} title="Edit">✏️</button>
+  <button type="button" className="btn-icon delete" onClick={() => deleteFaculty(f.id)} title="Delete">🗑️</button>
+  <button type="button" className="btn-icon" onClick={() => handleDownloadPDF(f)} title="Download PDF" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>📄</button>
+  <button type="button" className="btn-icon" onClick={() => handleDownloadExcel(f)} title="Download Excel" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>📊</button>
+</div>
                     </div>
                   ))}
                 </div>
