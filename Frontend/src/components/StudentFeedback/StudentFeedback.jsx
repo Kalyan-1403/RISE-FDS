@@ -31,18 +31,38 @@ const StudentFeedback = () => {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    console.log('Loading batch:', batchId);
+    console.log('Loading batch from backend:', batchId);
 
-    const storedData = localStorage.getItem(`batch_${batchId}`);
-    if (storedData) {
-      const data = JSON.parse(storedData);
-      console.log('✅ Batch data found:', data);
-      setBatchData(data);
-      setShowModal(true);
-    } else {
-      console.log('❌ Batch not found');
-      alert('Invalid feedback link!');
-    }
+    const fetchBatchData = async () => {
+      try {
+        // Fetch securely from the Flask backend!
+        const batch = await dataService.getBatch(batchId);
+        
+        if (batch) {
+          setBatchData(batch);
+          
+          // Dynamically initialize the ratings object based on assigned faculty
+          const initialRatings = {};
+          if (batch.faculty && batch.faculty.length > 0) {
+            batch.faculty.forEach((f) => {
+              initialRatings[f.id] = {};
+              PARAMETERS.forEach((p) => {
+                initialRatings[f.id][p] = '';
+              });
+            });
+          }
+          setRatings(initialRatings);
+        } else {
+          console.error('Batch not found in database');
+          alert("Invalid or expired feedback link.");
+        }
+      } catch (error) {
+        console.error('Error fetching batch:', error);
+        alert("Unable to connect to the server. Please try again later.");
+      }
+    };
+
+    fetchBatchData();
   }, [batchId]);
 
   const handleRatingChange = (paramIndex, subjectCode, value) => {

@@ -2,8 +2,7 @@ import { authAPI, facultyAPI, batchAPI, feedbackAPI, dashboardAPI, reportsAPI } 
 
 /**
  * DataService — Central data layer
- * 
- * Priority: Backend API first → localStorage fallback
+ * * Priority: Backend API first → localStorage fallback
  * This ensures the app works even if the backend is temporarily down.
  */
 
@@ -48,7 +47,17 @@ const saveDeptStructure = (structure) => {
   localStorage.setItem(DEPT_STRUCTURE_KEY, JSON.stringify(structure));
 };
 
-const addDepartment = (college, deptName, branches = null) => {
+const addDepartment = async (college, deptName, branches = null) => {
+  // 1. Attempt Backend Database Sync
+  try {
+    if (dashboardAPI.addDepartment) {
+      await dashboardAPI.addDepartment({ college, deptName, branches });
+    }
+  } catch (error) {
+    console.warn('Backend unavailable or endpoint missing, saving locally only');
+  }
+
+  // 2. Local Storage Fallback
   const structure = getDeptStructure();
   if (!structure[college]) {
     return { success: false, error: `College "${college}" not found` };
@@ -61,30 +70,61 @@ const addDepartment = (college, deptName, branches = null) => {
   return { success: true };
 };
 
-const deleteDepartment = (college, dept) => {
+const deleteDepartment = async (college, dept) => {
+  // 1. Attempt Backend Database Deletion (Cascade delete faculty/feedback in Postgres)
+  try {
+    if (dashboardAPI.deleteDepartment) {
+      await dashboardAPI.deleteDepartment(college, dept);
+    }
+  } catch (error) {
+    console.warn('Backend unavailable, deleting locally only');
+  }
+
+  // 2. Local Storage Cleanup
   const structure = getDeptStructure();
-  if (structure[college] && structure[college][dept]) {
+  
+  // THE FIX: Check if the key exists, rather than if its value is truthy
+  if (structure[college] && dept in structure[college]) {
     delete structure[college][dept];
     saveDeptStructure(structure);
-    // Also clean master list
-    const master = JSON.parse(localStorage.getItem(MASTER_FACULTY_KEY) || '{}');
-    delete master[`${college}_${dept}`];
-    localStorage.setItem(MASTER_FACULTY_KEY, JSON.stringify(master));
+    
+    // Clean master list safely
+    try {
+      const master = JSON.parse(localStorage.getItem(MASTER_FACULTY_KEY) || '{}');
+      delete master[`${college}_${dept}`];
+      localStorage.setItem(MASTER_FACULTY_KEY, JSON.stringify(master));
+    } catch (e) {
+      console.error("Local storage cleanup failed", e);
+    }
   }
+  return { success: true };
 };
+const deleteCollege = async (college) => {
+  // 1. Attempt Backend Database Deletion
+  try {
+    if (dashboardAPI.deleteCollege) {
+      await dashboardAPI.deleteCollege(college);
+    }
+  } catch (error) {
+    console.warn('Backend unavailable, deleting locally only');
+  }
 
-const deleteCollege = (college) => {
+  // 2. Local Storage Cleanup
   const structure = getDeptStructure();
   if (structure[college]) {
-    // Clean all dept data for this college
-    const master = JSON.parse(localStorage.getItem(MASTER_FACULTY_KEY) || '{}');
-    Object.keys(master).forEach((key) => {
-      if (key.startsWith(`${college}_`)) delete master[key];
-    });
-    localStorage.setItem(MASTER_FACULTY_KEY, JSON.stringify(master));
+    try {
+      const master = JSON.parse(localStorage.getItem(MASTER_FACULTY_KEY) || '{}');
+      Object.keys(master).forEach((key) => {
+        if (key.startsWith(`${college}_`)) delete master[key];
+      });
+      localStorage.setItem(MASTER_FACULTY_KEY, JSON.stringify(master));
+    } catch(e) {
+      console.error("Local storage cleanup failed", e);
+    }
     delete structure[college];
     saveDeptStructure(structure);
   }
+  return { success: true };
 };
 
 const mergeColleges = (source, target) => {
@@ -126,13 +166,9 @@ const login = async (loginData) => {
     }
     return response.data;
   } catch (error) {
-    // If backend responded with an error (401, 409, etc), it means
-    // backend IS reachable but credentials are wrong — do NOT fallback
     if (error.response) {
       throw new Error(error.response.data.error || 'Login failed');
     }
-
-    // Backend is truly unreachable (network error) — try local fallback
     console.warn('Backend unreachable, trying local fallback');
     try {
       return localAuthFallback(loginData);
@@ -153,18 +189,13 @@ const register = async (registerData) => {
   }
 };
 
-// Local auth fallback when backend is down
 const localAuthFallback = (loginData) => {
-  const { user_id, password, role, college, department } = loginData;
-
-  // Admin check
+  const { user_id, password, role } = loginData;
   if (role === 'admin' && user_id === 'ADMIN' && password === 'admin@123') {
     const user = { id: 0, userId: 'ADMIN', name: 'Master Admin', role: 'admin', college: '', department: '', username: 'Master Admin' };
     localStorage.setItem('user', JSON.stringify(user));
     return { success: true, access_token: 'local-fallback-token', user };
   }
-
-  // Check locally registered users
   const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
   const found = registeredUsers.find(
     (u) => u.userId === user_id && u.password === password && u.role === role
@@ -174,7 +205,6 @@ const localAuthFallback = (loginData) => {
     localStorage.setItem('user', JSON.stringify(user));
     return { success: true, access_token: 'local-fallback-token', user };
   }
-
   throw new Error('Invalid credentials');
 };
 
@@ -184,7 +214,6 @@ const localAuthFallback = (loginData) => {
 const getAllFaculty = async () => {
   try {
     const response = await facultyAPI.getAll();
-    // Sync to local storage for offline access
     const grouped = {};
     response.data.faculty.forEach((f) => {
       const key = `${f.college}_${f.dept}`;
@@ -232,7 +261,6 @@ const deleteFacultyById = async (facultyId) => {
   }
 };
 
-// Local faculty creation fallback
 const localCreateFaculty = (data) => {
   const faculty = {
     id: Date.now(),
@@ -252,7 +280,6 @@ const localCreateFaculty = (data) => {
   if (!master[key]) master[key] = [];
   master[key].push(faculty);
   localStorage.setItem(MASTER_FACULTY_KEY, JSON.stringify(master));
-  // Also save under HoD key
   const hodKey = `faculty_${faculty.college}_${faculty.dept}`;
   const hodList = JSON.parse(localStorage.getItem(hodKey) || '[]');
   hodList.push(faculty);
@@ -298,7 +325,6 @@ const listBatches = async () => {
 
 const localCreateBatch = (data) => {
   const batchId = `${data.college}-${data.dept}-${data.branch}-${data.year}-${data.sem}-${data.sec}-${Date.now()}`;
-  // Resolve faculty objects from IDs
   const master = JSON.parse(localStorage.getItem(MASTER_FACULTY_KEY) || '{}');
   const allFaculty = [];
   Object.values(master).forEach((list) => allFaculty.push(...(list || [])));
@@ -333,7 +359,6 @@ const localCreateBatch = (data) => {
 const submitFeedback = async (feedbackData) => {
   try {
     const response = await feedbackAPI.submit(feedbackData);
-    // Also save locally for offline stats
     localSaveFeedback(feedbackData);
     return response.data;
   } catch (error) {
@@ -345,13 +370,10 @@ const submitFeedback = async (feedbackData) => {
 
 const localSaveFeedback = (feedbackData) => {
   const { batchId, responses, comments } = feedbackData;
-
-  // Determine slot from batch
   const batchStr = localStorage.getItem(`batch_${batchId}`);
   const batch = batchStr ? JSON.parse(batchStr) : null;
   const slot = batch?.slot || 1;
 
-  // Save per-faculty feedback
   if (responses) {
     responses.forEach((resp) => {
       const feedbackKey = `feedback_${resp.facultyId}_${resp.year || 'II'}_${resp.semester || resp.sem || 'I'}`;
@@ -366,7 +388,6 @@ const localSaveFeedback = (feedbackData) => {
     });
   }
 
-  // Save to global feedback store
   const allFeedback = JSON.parse(localStorage.getItem('feedbackData') || '[]');
   allFeedback.push({ ...feedbackData, submittedAt: new Date().toISOString(), slot });
   localStorage.setItem('feedbackData', JSON.stringify(allFeedback));
@@ -392,7 +413,6 @@ const getFacultyFeedback = (facultyId, year, semester) => {
 const getAdminDashboard = async () => {
   try {
     const response = await dashboardAPI.getAdmin();
-    // Sync master faculty list
     if (response.data.masterFacultyList) {
       localStorage.setItem(MASTER_FACULTY_KEY, JSON.stringify(response.data.masterFacultyList));
     }
@@ -457,38 +477,25 @@ const deleteCollegeFeedback = (college) => {
 // EXPORT
 // ========================
 const dataService = {
-  // Structure
   getDeptStructure,
   addDepartment,
   deleteDepartment,
   deleteCollege,
   mergeColleges,
-
-  // Auth
   login,
   register,
-
-  // Faculty
   getAllFaculty,
   createFaculty,
   updateFaculty,
   deleteFacultyById,
-
-  // Batch
   createBatch,
   getBatch,
   listBatches,
-
-  // Feedback
   submitFeedback,
   getFacultyStats,
   getFacultyFeedback,
-
-  // Dashboard
   getAdminDashboard,
   getHoDDashboard,
-
-  // Delete
   deleteFacultyFeedback,
   deleteDepartmentFeedback,
   deleteCollegeFeedback,

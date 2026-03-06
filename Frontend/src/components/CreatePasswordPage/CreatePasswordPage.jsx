@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Confetti from 'react-confetti';
+import dataService from '../../services/dataService.js';
 import './CreatePasswordPage.css';
 
 const CreatePasswordPage = ({ userId, userData, onClose }) => {
@@ -11,6 +12,7 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
   const [error, setError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [windowSize, setWindowSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -55,7 +57,7 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
     return { level: 'strong', emoji: '🦸', color: '#2ecc71', text: 'Super Strong!' };
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (password.length < 8) {
@@ -73,37 +75,38 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
       return;
     }
 
-    // Save user to registeredUsers in localStorage
-    const newUser = {
-      userId: userId,
-      password: password,
-      name: userData.name,
-      role: 'hod',
-      college: userData.college,
-      department: userData.department,
-      mobile: userData.mobile,
-      email: userData.email,
-      createdAt: new Date().toISOString(),
-    };
+    setIsSubmitting(true);
+    setError('');
 
-    const existingUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    existingUsers.push(newUser);
-    localStorage.setItem('registeredUsers', JSON.stringify(existingUsers));
+    try {
+      // Register on the backend (PostgreSQL)
+      await dataService.register({
+        user_id: userId,
+        password: password,
+        name: userData.name,
+        college: userData.college,
+        department: userData.department,
+        mobile: userData.mobile,
+        email: userData.email,
+      });
 
-    console.log('✅ User registered:', newUser);
-    console.log('📦 All users now:', existingUsers);
+      // Show success animation
+      setShowConfetti(true);
+      setShowSuccess(true);
 
-    // Show success animation
-    setShowConfetti(true);
-    setShowSuccess(true);
-
-    // Redirect to home page after 4 seconds
-    setTimeout(() => {
-      setShowConfetti(false);
+      // Redirect to home page after 4 seconds
       setTimeout(() => {
-        onClose();
-      }, 500);
-    }, 4000);
+        setShowConfetti(false);
+        setTimeout(() => {
+          onClose();
+        }, 500);
+      }, 4000);
+    } catch (err) {
+      console.error('Registration failed:', err);
+      setError(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const strengthData = getStrengthData();
@@ -166,6 +169,7 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
                   onChange={handlePasswordChange}
                   placeholder="Create a strong password"
                   required
+                  disabled={isSubmitting}
                 />
                 <button
                   type="button"
@@ -217,6 +221,7 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
                   }}
                   placeholder="Re-enter your password"
                   required
+                  disabled={isSubmitting}
                 />
                 <button
                   type="button"
@@ -235,9 +240,15 @@ const CreatePasswordPage = ({ userId, userData, onClose }) => {
               </div>
             )}
 
-            <button type="submit" className="create-account-btn">
-              <span>Create Account</span>
-              <span className="btn-arrow">✨</span>
+            <button type="submit" className="create-account-btn" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <span>Creating Account...</span>
+              ) : (
+                <>
+                  <span>Create Account</span>
+                  <span className="btn-arrow">✨</span>
+                </>
+              )}
             </button>
           </form>
         </div>

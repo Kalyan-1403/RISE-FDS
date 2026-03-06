@@ -85,6 +85,11 @@ export const feedbackAPI = {
 export const dashboardAPI = {
   getAdmin: () => api.get('/dashboard/admin'),
   getHoD: () => api.get('/dashboard/hod'),
+  
+  // NEW: Secure structural management endpoints
+  addDepartment: (data) => api.post('/dashboard/department', data),
+  deleteDepartment: (college, dept) => api.delete('/dashboard/department', { data: { college, dept } }),
+  deleteCollege: (college) => api.delete('/dashboard/college', { data: { college } }),
 };
 
 // ========================

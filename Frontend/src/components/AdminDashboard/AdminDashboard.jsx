@@ -1,12 +1,12 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DeveloperCredit from '../DeveloperCredit/DeveloperCredit.jsx';
 import dataService from '../../services/dataService.js';
-import { generateFacultyPDF, generateDepartmentPDF, generateCollegePDF } from '../../utils/pdfGenerator.js';
-import { generateFacultyExcel } from '../../utils/excelGenerator.js';
-import { analyzeSuggestions } from '../../utils/suggestionAnalyzer.js';
 import './AdminDashboard.css';
 
+// ========================
+// CONSTANTS
+// ========================
 const PARAMETERS = [
   'Knowledge of the subject',
   'Coming well prepared for the class',
@@ -27,6 +27,114 @@ const PARAMETERS = [
 
 const YEARS = ['II', 'III', 'IV'];
 
+// ========================
+// INLINE SUGGESTION ANALYZER
+// (replaces the missing suggestionAnalyzer.js import)
+// ========================
+const POSITIVE_KEYWORDS = [
+  { keyword: 'good', label: 'Good Teaching' },
+  { keyword: 'excellent', label: 'Excellent Faculty' },
+  { keyword: 'helpful', label: 'Helpful Nature' },
+  { keyword: 'clear', label: 'Clear Explanations' },
+  { keyword: 'best', label: 'Best Faculty' },
+  { keyword: 'great', label: 'Great Teaching' },
+  { keyword: 'amazing', label: 'Amazing Lectures' },
+  { keyword: 'well prepared', label: 'Well Prepared' },
+  { keyword: 'punctual', label: 'Punctuality' },
+  { keyword: 'encourage', label: 'Encouraging' },
+  { keyword: 'interactive', label: 'Interactive Sessions' },
+  { keyword: 'knowledgeable', label: 'Subject Knowledge' },
+  { keyword: 'friendly', label: 'Approachable' },
+  { keyword: 'dedicated', label: 'Dedication' },
+  { keyword: 'understand', label: 'Understanding' },
+];
+
+const NEGATIVE_KEYWORDS = [
+  { keyword: 'boring', label: 'Boring Lectures' },
+  { keyword: 'fast', label: 'Too Fast Pace' },
+  { keyword: 'unclear', label: 'Unclear Explanations' },
+  { keyword: 'late', label: 'Punctuality Issues' },
+  { keyword: 'not clear', label: 'Lack of Clarity' },
+  { keyword: 'difficult', label: 'Difficult to Follow' },
+  { keyword: 'improve', label: 'Needs Improvement' },
+  { keyword: 'slow', label: 'Slow Pace' },
+  { keyword: 'poor', label: 'Poor Quality' },
+  { keyword: 'absent', label: 'Frequent Absence' },
+  { keyword: 'rude', label: 'Rude Behavior' },
+  { keyword: 'partial', label: 'Partiality' },
+  { keyword: 'syllabus not', label: 'Incomplete Syllabus' },
+  { keyword: 'no doubt', label: 'Doubt Clearing Issues' },
+];
+
+function analyzeSuggestions(comments) {
+  if (!comments || comments.length === 0) {
+    return { rawCount: 0, topics: [], positiveCount: 0, negativeCount: 0, neutralCount: 0 };
+  }
+
+  const topicMap = {};
+  let positiveCount = 0;
+  let negativeCount = 0;
+  let neutralCount = 0;
+
+  comments.forEach((comment) => {
+    if (!comment || typeof comment !== 'string') return;
+    const lower = comment.toLowerCase();
+    let matched = false;
+
+    POSITIVE_KEYWORDS.forEach(({ keyword, label }) => {
+      if (lower.includes(keyword)) {
+        if (!topicMap[label]) topicMap[label] = { text: label, count: 0, sentiment: 'positive' };
+        topicMap[label].count++;
+        matched = true;
+      }
+    });
+
+    NEGATIVE_KEYWORDS.forEach(({ keyword, label }) => {
+      if (lower.includes(keyword)) {
+        if (!topicMap[label]) topicMap[label] = { text: label, count: 0, sentiment: 'negative' };
+        topicMap[label].count++;
+        matched = true;
+      }
+    });
+
+    if (!matched) neutralCount++;
+    else {
+      const hasPositive = POSITIVE_KEYWORDS.some(({ keyword }) => lower.includes(keyword));
+      const hasNegative = NEGATIVE_KEYWORDS.some(({ keyword }) => lower.includes(keyword));
+      if (hasPositive && !hasNegative) positiveCount++;
+      else if (hasNegative && !hasPositive) negativeCount++;
+      else neutralCount++;
+    }
+  });
+
+  const topics = Object.values(topicMap).sort((a, b) => b.count - a.count);
+
+  return { rawCount: comments.length, topics, positiveCount, negativeCount, neutralCount };
+}
+
+// ========================
+// STUB: PDF/Excel generators
+// (placeholder until you build real utility files)
+// ========================
+function generateFacultyPDF(faculty, stats, college) {
+  alert(`📄 PDF Download for "${faculty.name}" (${college})\n\nThis feature requires the backend PDF generation endpoint.\nIt will be available after backend integration.`);
+}
+
+function generateFacultyExcel(faculty, feedbackData, stats) {
+  alert(`📊 Excel Download for "${faculty.name}"\n\nThis feature requires the backend Excel generation endpoint.\nIt will be available after backend integration.`);
+}
+
+function generateDepartmentPDF(deptKey, facultyList, allStats, college) {
+  alert(`📄 Department PDF for "${deptKey}" (${college})\n\nThis feature requires the backend PDF generation endpoint.\nIt will be available after backend integration.`);
+}
+
+function generateCollegePDF(college) {
+  alert(`📄 College PDF for "${college}"\n\nThis feature requires the backend PDF generation endpoint.\nIt will be available after backend integration.`);
+}
+
+// ========================
+// COMPONENT
+// ========================
 const AdminDashboard = () => {
   const navigate = useNavigate();
 
@@ -47,9 +155,9 @@ const AdminDashboard = () => {
   const [selectedSemester, setSelectedSemester] = useState('current');
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-  // Dynamic structure
-  const [DEPT_STRUCTURE, setDeptStructure] = useState(dataService.getDeptStructure());
-  const [COLLEGES, setColleges] = useState(() => {
+  // Dynamic structure (loaded from dataService, not hardcoded)
+  const [deptStructure, setDeptStructureState] = useState(() => dataService.getDeptStructure());
+  const [colleges, setColleges] = useState(() => {
     const struct = dataService.getDeptStructure();
     const obj = {};
     Object.keys(struct).forEach((c) => { obj[c] = c; });
@@ -75,6 +183,27 @@ const AdminDashboard = () => {
   const [suggestionData, setSuggestionData] = useState(null);
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
   const [suggestionTarget, setSuggestionTarget] = useState({ college: '', dept: '', faculty: '' });
+
+  // ==================== DATA HELPERS (useCallback for stable refs) ====================
+  const loadAllDepartmentData = useCallback(() => {
+    try {
+      const masterFacultyList = JSON.parse(localStorage.getItem('masterFacultyList') || '{}');
+      setAllDepartments(masterFacultyList);
+    } catch (e) {
+      console.error('Failed to load department data:', e);
+    }
+  }, []);
+
+  const refreshDeptStructure = useCallback(() => {
+    const struct = dataService.getDeptStructure();
+  
+    const newStruct = JSON.parse(JSON.stringify(struct || {}));
+    setDeptStructureState(newStruct);
+    
+    const obj = {};
+    Object.keys(newStruct).forEach((c) => { obj[c] = c; });
+    setColleges(obj);
+  }, []);
 
   // ==================== LIFECYCLE ====================
   useEffect(() => {
@@ -102,20 +231,28 @@ const AdminDashboard = () => {
 
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
-      const activeUser = JSON.parse(localStorage.getItem('user'));
-      if (activeUser && activeUser.role === 'admin') {
-        window.history.pushState(null, '', window.location.href);
-      } else {
+      try {
+        const activeUser = JSON.parse(localStorage.getItem('user'));
+        if (activeUser && activeUser.role === 'admin') {
+          window.history.pushState(null, '', window.location.href);
+        } else {
+          navigate('/login', { replace: true });
+        }
+      } catch {
         navigate('/login', { replace: true });
       }
     };
     window.addEventListener('popstate', handlePopState);
 
     const interval = setInterval(() => {
-      const activeUser = JSON.parse(localStorage.getItem('user'));
-      if (activeUser && activeUser.role === 'admin') {
-        loadAllDepartmentData();
-      } else {
+      try {
+        const activeUser = JSON.parse(localStorage.getItem('user'));
+        if (activeUser && activeUser.role === 'admin') {
+          loadAllDepartmentData();
+        } else {
+          clearInterval(interval);
+        }
+      } catch {
         clearInterval(interval);
       }
     }, 2000);
@@ -125,39 +262,25 @@ const AdminDashboard = () => {
       window.removeEventListener('popstate', handlePopState);
       clearInterval(interval);
     };
-  }, [navigate]);
-
-  // ==================== DATA LOADING ====================
-  const loadAllDepartmentData = () => {
-    try {
-      const masterFacultyList = JSON.parse(localStorage.getItem('masterFacultyList') || '{}');
-      setAllDepartments(masterFacultyList);
-    } catch (e) {
-      console.error('Failed to load department data:', e);
-    }
-  };
-
-  const refreshDeptStructure = () => {
-    const struct = dataService.getDeptStructure();
-    setDeptStructure(struct);
-    const obj = {};
-    Object.keys(struct).forEach((c) => { obj[c] = c; });
-    setColleges(obj);
-  };
-
+  }, [navigate, loadAllDepartmentData, refreshDeptStructure]);
   // ==================== AUTH ====================
   const handleLogout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('access_token');
     navigate('/login', { replace: true });
   };
 
   // ==================== FEEDBACK HELPERS ====================
-  const getFacultyFeedback = (facultyId, year, semester) => {
+  const getFacultyFeedback = useCallback((facultyId, year, semester) => {
     const feedbackKey = `feedback_${facultyId}_${year}_${semester}`;
-    return JSON.parse(localStorage.getItem(feedbackKey) || '[]');
-  };
+    try {
+      return JSON.parse(localStorage.getItem(feedbackKey) || '[]');
+    } catch {
+      return [];
+    }
+  }, []);
 
-  const calculateFacultyStatistics = (feedbackData) => {
+  const calculateFacultyStatistics = useCallback((feedbackData) => {
     if (!feedbackData || feedbackData.length === 0) return null;
 
     const totalResponses = feedbackData.length;
@@ -169,7 +292,7 @@ const AdminDashboard = () => {
 
       const parameterStats = {};
       PARAMETERS.forEach((param) => {
-        const ratings = slotData.map((f) => f.ratings[param]).filter((r) => r !== undefined);
+        const ratings = slotData.map((f) => f.ratings[param]).filter((r) => r !== undefined && r !== null);
         const sum = ratings.reduce((a, b) => a + b, 0);
         const avg = ratings.length > 0 ? sum / ratings.length : 0;
         const percentage = (avg / 10) * 100;
@@ -180,13 +303,16 @@ const AdminDashboard = () => {
         };
       });
 
-      const allRatings = slotData.flatMap((f) => Object.values(f.ratings));
-      const overallAvg = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
+      const allRatings = slotData.flatMap((f) => Object.values(f.ratings)).filter((r) => r !== undefined && r !== null);
+      const overallAvg = allRatings.length > 0 ? allRatings.reduce((a, b) => a + b, 0) / allRatings.length : 0;
 
       const ratingDist = {};
       for (let i = 1; i <= 10; i++) ratingDist[i] = 0;
       allRatings.forEach((rating) => {
-        ratingDist[rating] = (ratingDist[rating] || 0) + 1;
+        const rounded = Math.round(rating);
+        if (rounded >= 1 && rounded <= 10) {
+          ratingDist[rounded] = (ratingDist[rounded] || 0) + 1;
+        }
       });
 
       return {
@@ -204,10 +330,10 @@ const AdminDashboard = () => {
       hasSlot1: slot1Data.length > 0,
       hasSlot2: slot2Data.length > 0,
     };
-  };
+  }, []);
 
   // ==================== FACULTY MODAL ====================
-  const openFacultyModal = (faculty) => {
+  const openFacultyModal = useCallback((faculty) => {
     const feedbackData = getFacultyFeedback(faculty.id, faculty.year, faculty.sem);
     const statistics = calculateFacultyStatistics(feedbackData);
     setSelectedFaculty({
@@ -216,7 +342,7 @@ const AdminDashboard = () => {
       hasFeedback: feedbackData.length > 0,
     });
     setShowFacultyModal(true);
-  };
+  }, [getFacultyFeedback, calculateFacultyStatistics]);
 
   const getTopParameters = (parameterStats, count = 3) => {
     if (!parameterStats) return [];
@@ -235,7 +361,7 @@ const AdminDashboard = () => {
   };
 
   // ==================== DEPARTMENT MANAGEMENT ====================
-  const handleAddDepartment = () => {
+  const handleAddDepartment = async () => {
     if (!newDeptCollege || !newDeptName.trim()) {
       alert('⚠️ Please select a college and enter department name');
       return;
@@ -243,7 +369,7 @@ const AdminDashboard = () => {
     const branches = newDeptBranches.trim()
       ? newDeptBranches.split(',').map((b) => b.trim()).filter((b) => b)
       : null;
-    const result = dataService.addDepartment(newDeptCollege, newDeptName.trim(), branches);
+    const result = await dataService.addDepartment(newDeptCollege, newDeptName.trim(), branches);
     if (result.success) {
       alert(`✅ Department "${newDeptName.trim()}" added to ${newDeptCollege} College!`);
       refreshDeptStructure();
@@ -256,10 +382,31 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleDeleteCollege = (college) => {
+  const handleDeleteCollege = async (college) => {
     if (!window.confirm(`🚨 DANGER! This will permanently delete "${college}" College and ALL its data.\n\nThis action CANNOT be undone.`)) return;
     if (!window.confirm(`⚠️ FINAL CONFIRMATION: Delete "${college}" College?`)) return;
-    dataService.deleteCollege(college);
+    
+    await dataService.deleteCollege(college);
+
+    // FIX: Purge all departments under this college to prevent ghost data
+    try {
+      const masterFacultyList = JSON.parse(localStorage.getItem('masterFacultyList') || '{}');
+      let modified = false;
+      Object.keys(masterFacultyList).forEach((key) => {
+        if (key.startsWith(`${college}_`)) {
+          delete masterFacultyList[key];
+          modified = true;
+        }
+      });
+      if (modified) {
+        localStorage.setItem('masterFacultyList', JSON.stringify(masterFacultyList));
+      }
+    } catch (e) {
+      console.error('Failed to clean up master list:', e);
+    }
+
+    window.dispatchEvent(new Event('storage'));
+    
     refreshDeptStructure();
     loadAllDepartmentData();
     setSelectedCollege('');
@@ -267,9 +414,26 @@ const AdminDashboard = () => {
     alert(`✅ "${college}" College has been deleted.`);
   };
 
-  const handleDeleteDepartment = (college, dept) => {
+  const handleDeleteDepartment = async (college, dept) => {
     if (!window.confirm(`🗑️ Delete "${dept}" department from ${college} College?\n\nAll faculty and feedback data will be permanently removed.`)) return;
-    dataService.deleteDepartment(college, dept);
+    
+    await dataService.deleteDepartment(college, dept);
+    
+    // FIX: Manually purge the department from the master list to prevent ghost data
+    try {
+      const deptKey = `${college}_${dept}`;
+      const masterFacultyList = JSON.parse(localStorage.getItem('masterFacultyList') || '{}');
+      if (masterFacultyList[deptKey]) {
+        delete masterFacultyList[deptKey];
+        localStorage.setItem('masterFacultyList', JSON.stringify(masterFacultyList));
+      }
+    } catch (e) {
+      console.error('Failed to clean up master list:', e);
+    }
+
+    // FIX: Dispatch a storage event to sync all open tabs immediately
+    window.dispatchEvent(new Event('storage'));
+
     refreshDeptStructure();
     loadAllDepartmentData();
     setSelectedDepartment('');
@@ -277,15 +441,15 @@ const AdminDashboard = () => {
   };
 
   const handleMergeColleges = () => {
-    const colleges = Object.keys(DEPT_STRUCTURE);
-    if (colleges.length < 2) {
+    const collegeList = Object.keys(deptStructure);
+    if (collegeList.length < 2) {
       alert('⚠️ Need at least 2 colleges to merge');
       return;
     }
-    const source = prompt(`Enter the college to MERGE FROM (will be deleted):\nAvailable: ${colleges.join(', ')}`);
-    if (!source || !colleges.includes(source)) return;
-    const target = prompt(`Enter the college to MERGE INTO (will keep):\nAvailable: ${colleges.filter((c) => c !== source).join(', ')}`);
-    if (!target || !colleges.includes(target) || target === source) return;
+    const source = prompt(`Enter the college to MERGE FROM (will be deleted):\nAvailable: ${collegeList.join(', ')}`);
+    if (!source || !collegeList.includes(source)) return;
+    const target = prompt(`Enter the college to MERGE INTO (will keep):\nAvailable: ${collegeList.filter((c) => c !== source).join(', ')}`);
+    if (!target || !collegeList.includes(target) || target === source) return;
     if (!window.confirm(`🔄 Merge "${source}" INTO "${target}"?\n\n"${source}" will be deleted after merge.`)) return;
     const result = dataService.mergeColleges(source, target);
     if (result.success) {
@@ -322,7 +486,7 @@ const AdminDashboard = () => {
         });
         generateDepartmentPDF(deptKey, facultyList, allStats, college);
       } else if (type === 'college') {
-        generateCollegePDF(college, DEPT_STRUCTURE, allDepartments, getFacultyFeedback, calculateFacultyStatistics);
+        generateCollegePDF(college);
       }
     }
 
@@ -373,13 +537,13 @@ const AdminDashboard = () => {
       });
     }
 
-    const analysis = analyzeSuggestions(comments, college, dept, facultyName);
+    const analysis = analyzeSuggestions(comments);
     setSuggestionData(analysis);
     setShowSuggestionModal(true);
   };
 
   // ==================== COMPARISON ====================
-  const getComparisonData = () => {
+  const getComparisonData = useCallback(() => {
     if (!comparisonCollege || !comparisonDept) return [];
     const deptKey = `${comparisonCollege}_${comparisonDept}`;
     const facultyList = allDepartments[deptKey] || [];
@@ -399,7 +563,7 @@ const AdminDashboard = () => {
         hasData: fb.length > 0,
       };
     }).filter((f) => f.hasData);
-  };
+  }, [comparisonCollege, comparisonDept, allDepartments, getFacultyFeedback, calculateFacultyStatistics]);
 
   // ==================== AI STATISTICS ====================
   const generateAIStatistics = () => {
@@ -445,14 +609,13 @@ const AdminDashboard = () => {
     const avgCurrentRating = (facultyWithData.reduce((sum, f) => sum + f.currentRating, 0) / facultyWithData.length).toFixed(2);
     const avgPreviousRating = (facultyWithData.reduce((sum, f) => sum + f.previousRating, 0) / facultyWithData.length).toFixed(2);
 
-    // Gather suggestions
+    // Gather comments for suggestion analysis
     const allComments = [];
     facultyWithData.forEach((f) => {
       const fb = getFacultyFeedback(f.id, f.year, f.sem);
       fb.forEach((entry) => { if (entry.comments) allComments.push(entry.comments); });
     });
-    const deptParts = dept.split('_');
-    const suggestionAnalysis = analyzeSuggestions(allComments, deptParts[0] || '', deptParts[1] || '');
+    const suggestionAnalysis = analyzeSuggestions(allComments);
 
     const topPerformers = [...facultyWithData].sort((a, b) => b.currentRating - a.currentRating).slice(0, 3);
     const needsImprovement = [...facultyWithData].sort((a, b) => a.currentRating - b.currentRating).slice(0, 3);
@@ -494,7 +657,7 @@ const AdminDashboard = () => {
     return 'Needs Improvement';
   };
 
-  const getFacultyByCollegeDept = (college, dept, subDept = null) => {
+  const getFacultyByCollegeDept = useCallback((college, dept, subDept = null) => {
     const deptKey = `${college}_${dept}`;
     const deptFaculty = allDepartments[deptKey] || [];
     return deptFaculty.filter((f) => {
@@ -502,7 +665,7 @@ const AdminDashboard = () => {
       if (subDept && dept === 'S&H') return matchCollege && f.branch === subDept;
       return matchCollege;
     });
-  };
+  }, [allDepartments]);
 
   const removeFaculty = (deptKey, facultyId, facultyName = 'this faculty') => {
     if (!window.confirm(`🗑️ Permanently remove "${facultyName}" from Admin master list?`)) return;
@@ -521,7 +684,7 @@ const AdminDashboard = () => {
     }
   };
 
-  const calculateDepartmentStats = (facultyList) => {
+  const calculateDepartmentStats = useCallback((facultyList) => {
     if (!facultyList || facultyList.length === 0) return { avgRating: 0, satisfactionRate: 0, totalResponses: 0 };
     let totalRating = 0, totalResponses = 0, facultyWithFeedback = 0;
     facultyList.forEach((faculty) => {
@@ -537,12 +700,12 @@ const AdminDashboard = () => {
     const avgRating = facultyWithFeedback > 0 ? (totalRating / facultyWithFeedback).toFixed(2) : 0;
     const satisfactionRate = facultyWithFeedback > 0 ? ((avgRating / 10) * 100).toFixed(1) : 0;
     return { avgRating, satisfactionRate: parseFloat(satisfactionRate), totalResponses };
-  };
+  }, [getFacultyFeedback, calculateFacultyStatistics]);
 
-  const calculateCollegeStats = (college) => {
+  const calculateCollegeStats = useCallback((college) => {
     const distribution = { Outstanding: 0, Excellent: 0, 'Very Good': 0, Good: 0, Average: 0, 'Needs Improvement': 0 };
     let totalFaculty = 0, totalResponses = 0, totalRating = 0, facultyWithFeedback = 0;
-    Object.keys(DEPT_STRUCTURE[college] || {}).forEach((dept) => {
+    Object.keys(deptStructure[college] || {}).forEach((dept) => {
       const deptKey = `${college}_${dept}`;
       const deptFaculty = allDepartments[deptKey] || [];
       deptFaculty.forEach((faculty) => {
@@ -561,15 +724,15 @@ const AdminDashboard = () => {
     });
     const avgRating = facultyWithFeedback > 0 ? (totalRating / facultyWithFeedback).toFixed(2) : '0.00';
     return { distribution, totalFaculty, totalResponses, avgRating };
-  };
+  }, [deptStructure, allDepartments, getFacultyFeedback, calculateFacultyStatistics]);
 
   // ==================== COMPUTED VALUES ====================
-  const currentDeptStructure = selectedCollege ? DEPT_STRUCTURE[selectedCollege] || {} : {};
+  const currentDeptStructure = selectedCollege ? deptStructure[selectedCollege] || {} : {};
 
   const currentFaculty = useMemo(() => {
     if (!selectedCollege || !selectedDepartment) return [];
     return getFacultyByCollegeDept(selectedCollege, selectedDepartment, selectedSubDept);
-  }, [selectedCollege, selectedDepartment, selectedSubDept, allDepartments]);
+  }, [selectedCollege, selectedDepartment, selectedSubDept, getFacultyByCollegeDept]);
 
   const filteredFaculty = useMemo(() => {
     if (!searchTerm.trim()) return currentFaculty;
@@ -591,9 +754,6 @@ const AdminDashboard = () => {
       return grouped;
     }
   }, [filteredFaculty, selectedDepartment, currentDeptStructure]);
-
-  const totalFaculty = Object.values(allDepartments).reduce((sum, arr) => sum + (arr?.length || 0), 0);
-  const totalDepts = Object.keys(allDepartments).length;
 
   // ==================== GUARD ====================
   if (!currentUser) return null;
@@ -625,7 +785,7 @@ const AdminDashboard = () => {
     </div>
   );
 
-  // ==================== JSX ====================
+  // ==================== MAIN JSX ====================
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
@@ -651,7 +811,7 @@ const AdminDashboard = () => {
           </button>
           <div className="user-info">
             <span className="user-icon">👑</span>
-            <span className="user-name">{currentUser.username}</span>
+            <span className="user-name">{currentUser.username || currentUser.name}</span>
           </div>
           <button onClick={handleLogout} className="logout-btn">
             <span>🚪</span> Logout
@@ -660,7 +820,7 @@ const AdminDashboard = () => {
       </header>
 
       <main className="master-layout">
-        {/* Sidebar */}
+        {/* ========== SIDEBAR ========== */}
         <aside className="master-sidebar">
           <div className="sidebar-header"><h3>🏛️ Navigation</h3></div>
 
@@ -679,7 +839,7 @@ const AdminDashboard = () => {
               className="sidebar-select"
             >
               <option value="">Choose College</option>
-              {Object.values(COLLEGES).map((college) => (
+              {Object.values(colleges).map((college) => (
                 <option key={college} value={college}>{college}</option>
               ))}
             </select>
@@ -736,9 +896,10 @@ const AdminDashboard = () => {
           )}
         </aside>
 
-        {/* Main Content */}
+        {/* ========== MAIN CONTENT ========== */}
         <div className="master-content">
           {!selectedCollege ? (
+            /* ===== ANALYTICS DASHBOARD (no college selected) ===== */
             <div className="analytics-dashboard">
               <div className="dashboard-welcome-header">
                 <div className="welcome-icon-small">🎓</div>
@@ -749,8 +910,8 @@ const AdminDashboard = () => {
               </div>
 
               <div className="college-analytics-grid">
-                {Object.values(COLLEGES).map((college) => {
-                  const collegeData = Object.keys(DEPT_STRUCTURE[college] || {}).map((dept) => {
+                {Object.values(colleges).map((college) => {
+                  const collegeData = Object.keys(deptStructure[college] || {}).map((dept) => {
                     const deptKey = `${college}_${dept}`;
                     const deptFaculty = allDepartments[deptKey] || [];
                     const stats = calculateDepartmentStats(deptFaculty);
@@ -811,7 +972,7 @@ const AdminDashboard = () => {
               <div className="college-pie-charts-section">
                 <h3>📊 Performance Distribution by College</h3>
                 <div className="pie-charts-grid">
-                  {Object.values(COLLEGES).map((college) => {
+                  {Object.values(colleges).map((college) => {
                     const collegeStats = calculateCollegeStats(college);
                     return (
                       <div key={college} className="college-pie-card">
@@ -858,12 +1019,14 @@ const AdminDashboard = () => {
               </div>
             </div>
           ) : !selectedDepartment ? (
+            /* ===== COLLEGE SELECTED, NO DEPT ===== */
             <div className="welcome-screen">
               <div className="welcome-icon">🏛️</div>
               <h2>{selectedCollege} College</h2>
               <p>Select a department from the sidebar to view faculty details</p>
             </div>
           ) : (
+            /* ===== DEPARTMENT DETAIL VIEW ===== */
             <div className="department-detail-card">
               <div className="card-header-master">
                 <div>
@@ -922,7 +1085,7 @@ const AdminDashboard = () => {
 
               {/* Action Buttons */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                <button onClick={() => { generateFacultyPDF(selectedFaculty, selectedFaculty.statistics, selectedFaculty.college); }}
+                <button onClick={() => generateFacultyPDF(selectedFaculty, selectedFaculty.statistics, selectedFaculty.college)}
                   style={{ padding: '8px 16px', background: 'linear-gradient(135deg,#ef4444,#dc2626)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>
                   📄 Download PDF
                 </button>
@@ -1028,7 +1191,7 @@ const AdminDashboard = () => {
                                 <div className="excellence-content">
                                   <span className="excellence-param">{item.parameter}</span>
                                   <div className="excellence-score">
-                                    <span className="score-value">{item.average}/10</span>
+                                                                    <span className="score-value">{item.average}/10</span>
                                     <span className="score-percentage">{item.percentage}%</span>
                                   </div>
                                 </div>
@@ -1131,7 +1294,9 @@ const AdminDashboard = () => {
                       <div className="report-header">
                         <div className="report-title-section">
                           <h2>{aiStatsData.department} Department</h2>
-                          <p className="report-subtitle">{selectedSemester === 'both' ? 'Semester Comparison' : selectedSemester === 'current' ? 'Current Semester' : 'Previous Semester'}</p>
+                          <p className="report-subtitle">
+                            {selectedSemester === 'both' ? 'Semester Comparison' : selectedSemester === 'current' ? 'Current Semester' : 'Previous Semester'}
+                          </p>
                           <span className="report-timestamp">Generated: {aiStatsData.generatedAt}</span>
                         </div>
                         <button className="btn-back-config" onClick={() => setAiStatsData(null)}>← Back</button>
@@ -1161,14 +1326,13 @@ const AdminDashboard = () => {
                         </div>
                       </div>
 
-                      {/* AI Suggestions Section */}
+                      {/* AI Suggestions Section in Report */}
                       {aiStatsData.suggestions && aiStatsData.suggestions.rawCount > 0 && (
                         <div style={{ margin: '20px 0', padding: '20px', background: 'linear-gradient(135deg,#fef3c7,#fde68a)', borderRadius: '14px', border: '2px solid #f59e0b' }}>
-                          <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '800', color:'#b45309' 
-                          }}>
+                          <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '800', color: '#b45309' }}>
                             💡 AI Analysis of Student Comments ({aiStatsData.suggestions.rawCount})
                           </h3>
-                          <div className="suggestion-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                             {aiStatsData.suggestions.topics.map((topic, i) => (
                               <span key={i} style={{
                                 padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
@@ -1183,45 +1347,73 @@ const AdminDashboard = () => {
                         </div>
                       )}
 
+                      {/* Top Performers */}
                       <div className="performers-section">
                         <h3>🏆 Top Performers</h3>
-                        <div className="performers-grid">
-                          {aiStatsData.topPerformers.map((faculty, idx) => (
-                            <div key={faculty.id} className="performer-card top">
-                              <div className="performer-rank">{idx + 1}</div>
-                              <div className="performer-info">
-                                <h4>{faculty.name}</h4>
-                                <p>{faculty.subject} ({faculty.code})</p>
+                        {aiStatsData.topPerformers.length === 0 ? (
+                          <p className="no-performers">No performance data available</p>
+                        ) : (
+                          <div className="performers-grid">
+                            {aiStatsData.topPerformers.map((faculty, idx) => (
+                              <div key={faculty.id} className="performer-card top">
+                                <div className="performer-rank">{idx + 1}</div>
+                                <div className="performer-info">
+                                  <h4>{faculty.name}</h4>
+                                  <p>{faculty.subject} ({faculty.code})</p>
+                                </div>
+                                <div className="performer-stats">
+                                  <span className="performer-rating" style={{ color: getRatingColor(faculty.currentRating) }}>
+                                    ⭐ {faculty.currentRating}/10
+                                  </span>
+                                  <span className="performer-label">{getPerformanceLabel(faculty.currentRating)}</span>
+                                </div>
+                                <div className="performer-meter">
+                                  <div className="meter-fill" style={{ width: `${(faculty.currentRating / 10) * 100}%`, backgroundColor: getRatingColor(faculty.currentRating) }} />
+                                </div>
+                                <div className="performer-responses">{faculty.totalResponses} student responses</div>
                               </div>
-                              <div className="performer-stats">
-                                <span className="performer-rating" style={{ color: getRatingColor(faculty.currentRating) }}>
-                                  ⭐ {faculty.currentRating}/10
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
+                      {/* Needs Improvement */}
                       <div className="performers-section">
                         <h3>📈 Needs Improvement</h3>
-                        <div className="performers-grid">
-                          {aiStatsData.needsImprovement.map((faculty, idx) => (
-                            <div key={faculty.id} className="performer-card needs-improvement">
-                              <div className="performer-info">
-                                <h4>{faculty.name}</h4>
-                                <p>{faculty.subject} ({faculty.code})</p>
+                        {aiStatsData.needsImprovement.length === 0 ? (
+                          <p className="no-performers">All faculty performing well</p>
+                        ) : (
+                          <div className="performers-grid">
+                            {aiStatsData.needsImprovement.map((faculty, idx) => (
+                              <div key={faculty.id} className="performer-card needs-improvement">
+                                <div className="performer-info">
+                                  <h4>{faculty.name}</h4>
+                                  <p>{faculty.subject} ({faculty.code})</p>
+                                </div>
+                                <div className="performer-stats">
+                                  <span className="performer-rating" style={{ color: getRatingColor(faculty.currentRating) }}>
+                                    ⭐ {faculty.currentRating}/10
+                                  </span>
+                                  <span className="performer-label">{getPerformanceLabel(faculty.currentRating)}</span>
+                                </div>
+                                <div className="performer-meter">
+                                  <div className="meter-fill" style={{ width: `${(faculty.currentRating / 10) * 100}%`, backgroundColor: getRatingColor(faculty.currentRating) }} />
+                                </div>
+                                <div className="performer-responses">{faculty.totalResponses} student responses</div>
+                                {selectedSemester === 'both' && (
+                                  <div className="improvement-suggestion">
+                                    {parseFloat(faculty.improvement) > 0
+                                      ? `✅ Improved by ${faculty.improvement} points`
+                                      : `⚠️ Declined by ${Math.abs(parseFloat(faculty.improvement))} points`}
+                                  </div>
+                                )}
                               </div>
-                              <div className="performer-stats">
-                                <span className="performer-rating" style={{ color: getRatingColor(faculty.currentRating) }}>
-                                  ⭐ {faculty.currentRating}/10
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
+                      {/* Faculty Comparison Table */}
                       <div className="faculty-comparison-section">
                         <h3>📊 Faculty Performance Overview</h3>
                         <div className="comparison-table">
@@ -1234,20 +1426,27 @@ const AdminDashboard = () => {
                           </div>
                           {aiStatsData.facultyStats.map((faculty) => (
                             <div key={faculty.id} className="comparison-row">
-                              <div className="faculty-info-compact"><strong>{faculty.name}</strong></div>
+                              <div className="faculty-info-compact"><strong>{faculty.name}</strong><span>{faculty.code}</span></div>
                               <span className="subject-text">{faculty.subject}</span>
                               <span className="rating-badge" style={{ backgroundColor: getRatingColor(faculty.currentRating) }}>
-                                {faculty.currentRating}
+                                ⭐ {faculty.currentRating}
                               </span>
                               {selectedSemester === 'both' && (
-                                <span className={`change-badge ${faculty.improvement > 0 ? 'positive' : 'negative'}`}>
-                                  {faculty.improvement > 0 ? '↑' : '↓'} {faculty.improvement}
+                                <span className={`change-badge ${parseFloat(faculty.improvement) > 0 ? 'positive' : 'negative'}`}>
+                                  {parseFloat(faculty.improvement) > 0 ? '↑' : '↓'} {faculty.improvement}
                                 </span>
                               )}
                               <span>{faculty.totalResponses}</span>
                             </div>
                           ))}
                         </div>
+                      </div>
+
+                      {/* Report Footer */}
+                      <div className="report-footer">
+                        <button className="btn-download-ai-report" onClick={() => alert('📥 PDF report generation will be available after backend integration.')}>
+                          <span>📥</span> Download Full PDF Report
+                        </button>
                       </div>
                     </>
                   )}
@@ -1260,15 +1459,15 @@ const AdminDashboard = () => {
 
       {/* ==================== ADD DEPARTMENT MODAL ==================== */}
       {showAddDeptModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '500px', width: '90%', padding: '24px', borderRadius: '16px' }}>
-            <h2>➕ Add New Department</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+        <div className="modal-overlay" onClick={() => setShowAddDeptModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '500px', width: '90%', padding: '24px', borderRadius: '16px' }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ margin: '0 0 20px 0' }}>➕ Add New Department</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label className="sidebar-label">Select College</label>
                 <select className="sidebar-select" value={newDeptCollege} onChange={(e) => setNewDeptCollege(e.target.value)}>
                   <option value="">Choose College</option>
-                  {Object.keys(COLLEGES).map(c => <option key={c} value={c}>{c}</option>)}
+                  {Object.keys(colleges).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>
@@ -1276,12 +1475,12 @@ const AdminDashboard = () => {
                 <input type="text" className="sidebar-select" value={newDeptName} onChange={(e) => setNewDeptName(e.target.value)} placeholder="Enter Dept Code" />
               </div>
               <div>
-                <label className="sidebar-label">Branches (Optional for S&H)</label>
+                <label className="sidebar-label">Branches (Optional, for S&H-like depts)</label>
                 <input type="text" className="sidebar-select" value={newDeptBranches} onChange={(e) => setNewDeptBranches(e.target.value)} placeholder="Comma separated (e.g., CSM, CSD)" />
-                <small style={{ color: '#64748b' }}>Only required if adding a department like S&H that has sub-branches.</small>
+                <small style={{ color: '#64748b', display: 'block', marginTop: '4px' }}>Only required if adding a department like S&H that has sub-branches.</small>
               </div>
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button onClick={handleAddDepartment} className="btn-ai-stats" style={{ flex: 1 }}>Save</button>
+                <button onClick={handleAddDepartment} className="btn-ai-stats" style={{ flex: 1 }}>✅ Save</button>
                 <button onClick={() => setShowAddDeptModal(false)} className="btn-ai-stats" style={{ flex: 1, background: '#64748b' }}>Cancel</button>
               </div>
             </div>
@@ -1292,61 +1491,71 @@ const AdminDashboard = () => {
       {/* ==================== COMPARISON MODAL ==================== */}
       {showComparisonModal && (
         <div className="modal-overlay" onClick={() => setShowComparisonModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '900px', width: '95%', height: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: '900px', width: '95%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-custom">
-              <h2>📊 Semester Comparison Tool</h2>
+              <div className="modal-title-section"><h2>📊 Semester Comparison Tool</h2></div>
               <button className="modal-close-btn" onClick={() => setShowComparisonModal(false)}>✕</button>
             </div>
-            <div className="modal-body-custom">
+            <div className="modal-body-custom" style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
               <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
-                <select className="sidebar-select" value={comparisonCollege} onChange={e => setComparisonCollege(e.target.value)}>
+                <select className="sidebar-select" value={comparisonCollege} onChange={(e) => { setComparisonCollege(e.target.value); setComparisonDept(''); }}>
                   <option value="">Select College</option>
-                  {Object.keys(COLLEGES).map(c => <option key={c} value={c}>{c}</option>)}
+                  {Object.keys(colleges).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select className="sidebar-select" value={comparisonDept} onChange={e => setComparisonDept(e.target.value)}>
+                <select className="sidebar-select" value={comparisonDept} onChange={(e) => setComparisonDept(e.target.value)}>
                   <option value="">Select Department</option>
-                  {comparisonCollege && DEPT_STRUCTURE[comparisonCollege] && Object.keys(DEPT_STRUCTURE[comparisonCollege]).map(d => (
+                  {comparisonCollege && deptStructure[comparisonCollege] && Object.keys(deptStructure[comparisonCollege]).map((d) => (
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
               </div>
 
-              {comparisonCollege && comparisonDept && (
-                <div className="comparison-table">
-                   <div className="comparison-header" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
+              {comparisonCollege && comparisonDept && (() => {
+                const data = getComparisonData();
+                return (
+                  <div className="comparison-table">
+                    <div className="comparison-header" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
                       <span>Faculty Name</span>
                       <span>Slot 1 (Prev)</span>
                       <span>Slot 2 (Curr)</span>
                       <span>Change</span>
                       <span>Status</span>
-                   </div>
-                   {getComparisonData().map(f => {
-                     const change = parseFloat(f.change);
-                     return (
-                       <div key={f.id} className="comparison-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
-                         <div>
-                           <strong>{f.name}</strong>
-                           <div style={{fontSize:'12px', color:'#64748b'}}>{f.subject}</div>
-                         </div>
-                         <div style={{fontWeight:'bold', color:'#64748b'}}>{f.slot1Avg || '-'}</div>
-                         <div style={{fontWeight:'bold', color: getRatingColor(parseFloat(f.slot2Avg))}}>{f.slot2Avg || '-'}</div>
-                         <div style={{
-                           fontWeight:'bold', 
-                           color: change > 0 ? '#10b981' : change < 0 ? '#ef4444' : '#64748b'
-                         }}>
-                           {change ? (change > 0 ? `+${change}` : change) : '-'}
-                         </div>
-                         <div>
-                           <span className={`performance-badge ${change > 0 ? 'good' : change < 0 ? 'poor' : 'average'}`}>
-                             {change > 0 ? 'Improved' : change < 0 ? 'Declined' : 'Stable'}
-                           </span>
-                         </div>
-                       </div>
-                     );
-                   })}
-                   {getComparisonData().length === 0 && <p style={{textAlign:'center', padding:'20px'}}>No comparison data available.</p>}
-                </div>
-              )}
+                    </div>
+                    {data.length === 0 ? (
+                      <p style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontWeight: '600' }}>No comparison data available for this department.</p>
+                    ) : (
+                      data.map((f) => {
+                        const change = parseFloat(f.change);
+                        return (
+                          <div key={f.id} className="comparison-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
+                            <div>
+                              <strong>{f.name}</strong>
+                              <div style={{ fontSize: '12px', color: '#64748b' }}>{f.subject}</div>
+                            </div>
+                            <div style={{ fontWeight: 'bold', color: '#64748b' }}>{f.slot1Avg || '-'}</div>
+                            <div style={{ fontWeight: 'bold', color: f.slot2Avg ? getRatingColor(parseFloat(f.slot2Avg)) : '#64748b' }}>{f.slot2Avg || '-'}</div>
+                            <div style={{
+                              fontWeight: 'bold',
+                              color: change > 0 ? '#10b981' : change < 0 ? '#ef4444' : '#64748b'
+                            }}>
+                              {f.change ? (change > 0 ? `+${f.change}` : f.change) : '-'}
+                            </div>
+                            <div>
+                              <span style={{
+                                padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '700',
+                                background: change > 0 ? '#d1fae5' : change < 0 ? '#fee2e2' : '#f3f4f6',
+                                color: change > 0 ? '#065f46' : change < 0 ? '#991b1b' : '#374151'
+                              }}>
+                                {change > 0 ? '↑ Improved' : change < 0 ? '↓ Declined' : '→ Stable'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1355,81 +1564,101 @@ const AdminDashboard = () => {
       {/* ==================== SUGGESTION ANALYSIS MODAL ==================== */}
       {showSuggestionModal && suggestionData && (
         <div className="modal-overlay" onClick={() => setShowSuggestionModal(false)}>
-           <div className="modal-content" style={{ maxWidth: '800px', width: '90%', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-             <div className="modal-header-custom" style={{background: 'linear-gradient(135deg, #7c3aed, #6d28d9)'}}>
-                <h2 style={{color:'white'}}>💡 AI Suggestion Analysis</h2>
-                <button className="modal-close-btn" style={{color:'white'}} onClick={() => setShowSuggestionModal(false)}>✕</button>
-             </div>
-             <div className="modal-body-custom" style={{padding:'20px'}}>
-                <div style={{marginBottom:'20px'}}>
-                  <h3>Scope: {suggestionTarget.faculty ? suggestionTarget.faculty : `${suggestionTarget.dept || 'All'} Department`}</h3>
-                  <p>Analyzed <strong>{suggestionData.rawCount}</strong> comments.</p>
-                </div>
+          <div className="modal-content" style={{ maxWidth: '800px', width: '90%', maxHeight: '85vh', overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-custom" style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}>
+              <div className="modal-title-section"><h2 style={{ color: 'white' }}>💡 AI Suggestion Analysis</h2></div>
+              <button className="modal-close-btn" onClick={() => setShowSuggestionModal(false)}>✕</button>
+            </div>
+            <div className="modal-body-custom" style={{ padding: '20px', flex: 1, overflowY: 'auto' }}>
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ margin: '0 0 4px 0' }}>
+                  Scope: {suggestionTarget.faculty ? suggestionTarget.faculty : suggestionTarget.dept ? `${suggestionTarget.dept} Department` : `${suggestionTarget.college} College`}
+                </h3>
+                <p style={{ color: '#64748b' }}>Analyzed <strong>{suggestionData.rawCount}</strong> student comments.</p>
+              </div>
 
-                <div style={{display:'grid', gridTemplateColumns: '1fr 1fr', gap:'20px'}}>
-                  <div className="stat-box" style={{background:'#ecfdf5', border:'1px solid #10b981'}}>
-                    <span style={{fontSize:'24px', color:'#10b981'}}>👍</span>
-                    <div>
-                      <h4>Positive Themes</h4>
-                      <p>What students like</p>
+              {suggestionData.rawCount === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <div style={{ fontSize: '60px', marginBottom: '16px' }}>💬</div>
+                  <h3 style={{ color: '#64748b' }}>No Comments Available</h3>
+                  <p style={{ color: '#94a3b8' }}>Students haven't submitted any comments yet.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Summary Stats */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '24px' }}>
+                    <div style={{ textAlign: 'center', padding: '16px', background: '#ecfdf5', borderRadius: '12px', border: '2px solid #10b981' }}>
+                      <div style={{ fontSize: '28px', fontWeight: '900', color: '#10b981' }}>{suggestionData.positiveCount}</div>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#065f46' }}>👍 Positive</div>
+                    </div>
+                    <div style={{ textAlign: 'center', padding: '16px', background: '#fef2f2', borderRadius: '12px', border: '2px solid #ef4444' }}>
+                      <div style={{ fontSize: '28px', fontWeight: '900', color: '#ef4444' }}>{suggestionData.negativeCount}</div>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#991b1b' }}>⚠️ Concerns</div>
+                    </div>
+                    <div style={{ textAlign: 'center', padding: '16px', background: '#f3f4f6', borderRadius: '12px', border: '2px solid #9ca3af' }}>
+                      <div style={{ fontSize: '28px', fontWeight: '900', color: '#6b7280' }}>{suggestionData.neutralCount}</div>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#374151' }}>💬 Neutral</div>
                     </div>
                   </div>
-                  <div className="stat-box" style={{background:'#fef2f2', border:'1px solid #ef4444'}}>
-                    <span style={{fontSize:'24px', color:'#ef4444'}}>⚠️</span>
-                    <div>
-                      <h4>Areas of Concern</h4>
-                      <p>What needs attention</p>
-                    </div>
-                  </div>
-                </div>
 
-                <div style={{marginTop:'24px'}}>
-                  <h4>Key Topics Identified</h4>
-                  <div style={{display:'flex', flexWrap:'wrap', gap:'10px', marginTop:'10px'}}>
-                    {suggestionData.topics.map((t, i) => (
-                      <span key={i} style={{
-                        padding:'8px 16px', borderRadius:'20px', fontWeight:'600',
-                        background: t.sentiment === 'positive' ? '#d1fae5' : t.sentiment === 'negative' ? '#fee2e2' : '#f3f4f6',
-                        color: t.sentiment === 'positive' ? '#065f46' : t.sentiment === 'negative' ? '#991b1b' : '#374151'
-                      }}>
-                        {t.text} ({t.count})
-                      </span>
-                    ))}
+                  {/* Topics */}
+                  <div>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '800', color: '#1e293b' }}>Key Topics Identified</h4>
+                    {suggestionData.topics.length === 0 ? (
+                      <p style={{ color: '#94a3b8', fontStyle: 'italic' }}>No specific topics could be extracted from the comments.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                        {suggestionData.topics.map((t, i) => (
+                          <span key={i} style={{
+                            padding: '8px 16px', borderRadius: '20px', fontWeight: '600', fontSize: '13px',
+                            background: t.sentiment === 'positive' ? '#d1fae5' : t.sentiment === 'negative' ? '#fee2e2' : '#f3f4f6',
+                            color: t.sentiment === 'positive' ? '#065f46' : t.sentiment === 'negative' ? '#991b1b' : '#374151',
+                            border: '1px solid rgba(0,0,0,0.08)'
+                          }}>
+                            {t.sentiment === 'positive' ? '👍 ' : t.sentiment === 'negative' ? '⚠️ ' : '💬 '}
+                            {t.text} ({t.count})
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-             </div>
-           </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       {/* ==================== DELETE CONFIRMATION MODAL ==================== */}
       {showDeleteModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '400px', padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🗑️</div>
-            <h3>Delete Responses?</h3>
-            <p style={{ color: '#64748b', marginBottom: '24px' }}>
-              Are you sure you want to delete responses for 
-              <strong> {deleteTarget.faculty ? deleteTarget.faculty.name : deleteTarget.dept ? deleteTarget.dept : deleteTarget.college}</strong>?
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '420px', padding: '32px', textAlign: 'center', borderRadius: '20px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: '56px', marginBottom: '16px' }}>🗑️</div>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: '800' }}>Delete Responses?</h3>
+            <p style={{ color: '#64748b', marginBottom: '24px', fontSize: '14px' }}>
+              Are you sure you want to delete responses for{' '}
+              <strong>{deleteTarget.faculty ? deleteTarget.faculty.name : deleteTarget.dept ? `${deleteTarget.dept} Dept` : `${deleteTarget.college} College`}</strong>?
+              <br />
+              <span style={{ fontSize: '12px', color: '#ef4444' }}>This action cannot be undone.</span>
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
                 onClick={() => confirmDeleteResponses(true)}
-                className="btn-ai-stats" 
-                style={{ background: '#10b981' }}
+                className="btn-ai-stats"
+                style={{ background: 'linear-gradient(135deg, #10b981, #059669)', width: '100%', justifyContent: 'center' }}
               >
-                📥 Download & Delete
+                📥 Download First, Then Delete
               </button>
-              <button 
+              <button
                 onClick={() => confirmDeleteResponses(false)}
-                className="btn-ai-stats" 
-                style={{ background: '#ef4444' }}
+                className="btn-ai-stats"
+                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', width: '100%', justifyContent: 'center' }}
               >
-                🗑️ Delete Only
+                🗑️ Delete Without Downloading
               </button>
-              <button 
+              <button
                 onClick={() => setShowDeleteModal(false)}
-                style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: '8px' }}
+                style={{ background: 'transparent', border: '2px solid #e2e8f0', borderRadius: '12px', color: '#64748b', cursor: 'pointer', padding: '10px', fontWeight: '700', fontSize: '14px', marginTop: '4px' }}
               >
                 Cancel
               </button>

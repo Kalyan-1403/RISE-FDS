@@ -1,136 +1,110 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
+from flask import Blueprint, request, jsonify, g
 from ..extensions import db
+from ..models.batch import Batch
+from ..models.feedback import FeedbackSubmission, FeedbackRating
 from ..models.faculty import Faculty
-from ..utils.helpers import role_required, get_current_user
-from ..utils.validators import sanitize_string, validate_name, validate_subject, validate_code
+from ..middleware.auth_middleware import require_role
+from ..utils.validators import validate_rating, sanitize_string
 
-faculty_bp = Blueprint('faculty', __name__)
+feedback_bp = Blueprint('feedback', __name__)
 
-
-@faculty_bp.route('', methods=['GET'])
-@jwt_required()
-def get_faculty():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    if user.role == 'admin':
-        faculty = Faculty.query.filter_by(is_active=True).all()
-    else:
-        faculty = Faculty.query.filter_by(
-            college=user.college,
-            department=user.department,
-            is_active=True
-        ).all()
-
-    return jsonify({"faculty": [f.to_dict() for f in faculty]}), 200
-
-
-@faculty_bp.route('', methods=['POST'])
-@jwt_required()
-def create_faculty():
-    user = get_current_user()
-    if not user or user.role not in ('hod', 'admin'):
-        return jsonify({"error": "Unauthorized"}), 403
-
+@feedback_bp.route('/submit', methods=['POST'])
+def submit_feedback():
+    # PUBLIC ROUTE: Students submit feedback here
     data = request.get_json()
     if not data:
         return jsonify({"error": "Request body required"}), 400
 
-    code = sanitize_string(data.get('code', ''), 30).upper()
-    name = sanitize_string(data.get('name', ''), 150)
-    subject = sanitize_string(data.get('subject', ''), 200)
-    year = sanitize_string(data.get('year', ''), 10)
-    semester = sanitize_string(data.get('sem', data.get('semester', '')), 10)
-    section = sanitize_string(data.get('sec', data.get('section', '')), 20)
-    branch = sanitize_string(data.get('branch', user.department), 50)
-    college = data.get('college', user.college)
-    department = data.get('dept', data.get('department', user.department))
+    batch_id_str = data.get('batchId', '')
+    responses = data.get('responses', [])
+    comments = sanitize_string(data.get('comments', ''), 2000)
 
-    valid, msg = validate_code(code)
-    if not valid:
-        return jsonify({"error": msg}), 400
+    if not batch_id_str or not responses:
+        return jsonify({"error": "Batch ID and responses are required"}), 400
 
-    valid, msg = validate_name(name)
-    if not valid:
-        return jsonify({"error": msg}), 400
-
-    valid, msg = validate_subject(subject)
-    if not valid:
-        return jsonify({"error": msg}), 400
-
-    if not year or not semester or not section:
-        return jsonify({"error": "Year, semester, and section are required"}), 400
-
-    faculty = Faculty(
-        code=code, name=name, subject=subject,
-        year=year, semester=semester, section=section,
-        branch=branch, department=department, college=college,
-        added_by=user.id,
+    batch = Batch.query.filter_by(batch_id=batch_id_str).first()
+    if not batch:
+        return jsonify({"error": "Invalid Batch ID"}), 404
+    
+    # Create the submission record
+    submission = FeedbackSubmission(
+        batch_db_id=batch.id,
+        slot=batch.slot,
+        comments=comments,
+        ip_address=request.remote_addr
     )
+    db.session.add(submission)
+    db.session.flush() # Flush to get submission.id for the ratings
 
-    db.session.add(faculty)
-    db.session.commit()
+    # Process ratings
+    for resp in responses:
+        faculty_id = resp.get('facultyId')
+        ratings_dict = resp.get('ratings', {})
 
-    return jsonify({"success": True, "faculty": faculty.to_dict()}), 201
+        if not faculty_id:
+            continue
 
-
-@faculty_bp.route('/<int:faculty_id>', methods=['PUT'])
-@jwt_required()
-def update_faculty(faculty_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    faculty = Faculty.query.get(faculty_id)
-    if not faculty:
-        return jsonify({"error": "Faculty not found"}), 404
-
-    if user.role == 'hod' and (faculty.college != user.college or faculty.department != user.department):
-        return jsonify({"error": "Cannot edit faculty from another department"}), 403
-
-    data = request.get_json()
-
-    if 'name' in data:
-        name = sanitize_string(data['name'], 150)
-        valid, msg = validate_name(name)
-        if not valid:
-            return jsonify({"error": msg}), 400
-        faculty.name = name
-
-    if 'subject' in data:
-        subject = sanitize_string(data['subject'], 200)
-        valid, msg = validate_subject(subject)
-        if not valid:
-            return jsonify({"error": msg}), 400
-        faculty.subject = subject
-
-    if 'code' in data:
-        code = sanitize_string(data['code'], 30).upper()
-        valid, msg = validate_code(code)
-        if not valid:
-            return jsonify({"error": msg}), 400
-        faculty.code = code
+        for parameter, rating_val in ratings_dict.items():
+            # Validate range 1-10
+            if not validate_rating(rating_val):
+                continue
+            
+            rating_entry = FeedbackRating(
+                submission_id=submission.id,
+                faculty_id=faculty_id,
+                parameter=sanitize_string(parameter, 200),
+                rating=int(rating_val)
+            )
+            db.session.add(rating_entry)
 
     db.session.commit()
-    return jsonify({"success": True, "faculty": faculty.to_dict()}), 200
+    return jsonify({"success": True, "message": "Feedback submitted successfully"}), 201
 
 
-@faculty_bp.route('/<int:faculty_id>', methods=['DELETE'])
-@jwt_required()
-def delete_faculty(faculty_id):
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Unauthorized"}), 401
+@feedback_bp.route('/faculty/<int:faculty_id>/stats', methods=['GET'])
+@require_role(['hod', 'admin'])
+def get_faculty_stats(faculty_id):
+    # SECURED: Only Admins/HoDs can see the aggregated stats
+    ratings = FeedbackRating.query.filter_by(faculty_id=faculty_id).all()
+    
+    if not ratings:
+        return jsonify({"stats": None}), 200
 
-    faculty = Faculty.query.get(faculty_id)
-    if not faculty:
-        return jsonify({"error": "Faculty not found"}), 404
+    # Aggregate data by slot
+    slot_data = {}
+    for r in ratings:
+        slot = r.submission.slot if r.submission else 1
+        if slot not in slot_data:
+            slot_data[slot] = {}
+        if r.parameter not in slot_data[slot]:
+            slot_data[slot][r.parameter] = []
+        slot_data[slot][r.parameter].append(r.rating)
 
-    if user.role == 'hod' and (faculty.college != user.college or faculty.department != user.department):
-        return jsonify({"error": "Cannot delete faculty from another department"}), 403
+    result = {}
+    for slot, params in slot_data.items():
+        param_stats = {}
+        all_ratings = []
+        for param, vals in params.items():
+            avg = sum(vals) / len(vals)
+            param_stats[param] = {
+                'average': round(avg, 2),
+                'percentage': round((avg / 10) * 100, 1),
+                'totalRatings': len(vals),
+            }
+            all_ratings.extend(vals)
 
-    faculty.is_active = False
-    db.session.commit()
-    return jsonify({"success": True, "message": "Faculty deactivated"}), 200
+        overall = sum(all_ratings) / len(all_ratings) if all_ratings else 0
+        dist = {}
+        for i in range(1, 11):
+            dist[str(i)] = 0
+        for r in all_ratings:
+            dist[str(r)] = dist.get(str(r), 0) + 1
+
+        result[f'slot{slot}'] = {
+            'parameterStats': param_stats,
+            'overallAverage': round(overall, 2),
+            'ratingDistribution': dist,
+            'responseCount': len(set(r.submission_id for r in ratings if r.submission and r.submission.slot == slot))
+        }
+
+    return jsonify({"stats": result}), 200

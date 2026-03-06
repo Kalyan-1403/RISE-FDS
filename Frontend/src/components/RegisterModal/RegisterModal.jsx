@@ -63,22 +63,9 @@ const RegisterModal = ({ onClose }) => {
     e.preventDefault();
     
     if (validateForm()) {
-      // Check if department already has an HoD registered
-      const existingUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-      const duplicate = existingUsers.find(
-        (u) =>
-          u.role === 'hod' &&
-          u.college === formData.college &&
-          u.department === formData.department
-      );
-
-      if (duplicate) {
-        alert(
-          `🚨 IMPOSTER ALERT!\n\nAn HoD account for ${formData.college} College - ${formData.department} Department already exists!\n\nOnly ONE HoD registration is allowed per department.\n\nIf you believe this is an error, please contact the Master Admin.`
-        );
-        return;
-      }
-
+      // Duplicate check will happen on the backend when
+      // CreatePasswordPage calls dataService.register()
+      // The backend returns 409 if HoD already exists for this college+dept
       const userId = generateUserId();
       setGeneratedUserId(userId);
       setShowPasswordPage(true);
@@ -122,7 +109,7 @@ const RegisterModal = ({ onClose }) => {
           <p>Join RISE Feedback Management System</p>
         </div>
 
-                <div className="modal-body">
+        <div className="modal-body">
           <form className="register-form" onSubmit={handleSubmit}>
             {/* Name */}
             <div className="form-field">
@@ -221,7 +208,7 @@ const RegisterModal = ({ onClose }) => {
               <span className="btn-arrow">→</span>
             </button>
           </form>
-	</div>
+        </div>
       </div>
     </div>
   );

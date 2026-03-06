@@ -1,22 +1,19 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
+from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 from ..extensions import db
 from ..models.batch import Batch, BatchFaculty
 from ..models.faculty import Faculty
-from ..utils.helpers import get_current_user
+from ..middleware.auth_middleware import require_role, require_auth
 from ..utils.validators import sanitize_string
 
 batch_bp = Blueprint('batch', __name__)
 
 
 @batch_bp.route('/create', methods=['POST'])
-@jwt_required()
+@require_role(['hod', 'admin'])
 def create_batch():
-    user = get_current_user()
-    if not user or user.role not in ('hod', 'admin'):
-        return jsonify({"error": "Unauthorized"}), 403
-
+    user = g.current_user
+    
     data = request.get_json()
     if not data:
         return jsonify({"error": "Request body required"}), 400
@@ -25,22 +22,26 @@ def create_batch():
     if not faculty_ids:
         return jsonify({"error": "At least one faculty member is required"}), 400
 
-    college = sanitize_string(data.get('college', user.college), 100)
-    department = sanitize_string(data.get('dept', user.department), 50)
+    # Auto-fill college/dept for HoD, allow override for Admin
+    if user.role == 'hod':
+        college = user.college
+        department = user.department
+    else:
+        college = sanitize_string(data.get('college', ''), 100)
+        department = sanitize_string(data.get('dept', ''), 50)
+
     branch = sanitize_string(data.get('branch', department), 50)
     year = sanitize_string(data.get('year', ''), 10)
     semester = sanitize_string(data.get('sem', ''), 10)
     section = sanitize_string(data.get('sec', ''), 20)
-    slot = int(data.get('slot', 1))
+    slot = data.get('slot', 1)
     slot_start = data.get('slotStartDate')
     slot_end = data.get('slotEndDate')
-    slot_label = data.get('slotLabel', f'Slot {slot}')
+    slot_label = sanitize_string(data.get('slotLabel', f'Slot {slot}'), 100)
 
-    if not year or not semester or not section:
-        return jsonify({"error": "Year, semester, and section are required"}), 400
-
-    batch_id = f"{college}-{department}-{branch}-{year}-{semester}-{section}-{int(datetime.utcnow().timestamp() * 1000)}"
-
+    # Generate a unique Batch ID
+    batch_id = f"{college}-{department}-{branch}-{year}-{semester}-{section}-{int(datetime.utcnow().timestamp())}"
+    
     batch = Batch(
         batch_id=batch_id,
         college=college,
@@ -75,6 +76,7 @@ def create_batch():
 
 @batch_bp.route('/<batch_id>', methods=['GET'])
 def get_batch(batch_id):
+    # PUBLIC ROUTE: Used by students to load the feedback form
     batch = Batch.query.filter_by(batch_id=batch_id, is_active=True).first()
     if not batch:
         return jsonify({"error": "Batch not found"}), 404
@@ -82,12 +84,10 @@ def get_batch(batch_id):
 
 
 @batch_bp.route('/list', methods=['GET'])
-@jwt_required()
+@require_auth
 def list_batches():
-    user = get_current_user()
-    if not user:
-        return jsonify({"error": "Unauthorized"}), 401
-
+    user = g.current_user
+    
     if user.role == 'admin':
         batches = Batch.query.filter_by(is_active=True).order_by(Batch.created_at.desc()).all()
     else:
