@@ -15,12 +15,12 @@ class BaseConfig:
     JWT_HEADER_NAME = 'Authorization'
     JWT_HEADER_TYPE = 'Bearer'
 
+    # Fetch and format the database URL cleanly inside the class scope
     database_url = os.getenv("DATABASE_URL")
+    if database_url and database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-if database_url and database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-SQLALCHEMY_DATABASE_URI = database_url or "postgresql://localhost:5432/rise_feedback_dev"
+    SQLALCHEMY_DATABASE_URI = database_url or "postgresql://localhost:5432/rise_feedback_dev"
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
