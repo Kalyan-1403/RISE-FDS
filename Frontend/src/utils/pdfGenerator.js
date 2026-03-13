@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 const PARAMETERS = [
   'Knowledge of the subject',
@@ -69,7 +69,7 @@ export const generateFacultyPDF = (faculty, statistics, collegeName) => {
     ['Section', faculty.sec],
   ];
 
-  doc.autoTable({
+  autoTable(doc, {
     startY: y,
     body: infoData,
     theme: 'grid',
@@ -123,7 +123,7 @@ export const generateFacultyPDF = (faculty, statistics, collegeName) => {
       ];
     });
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       head: [['S.No', 'Parameter', 'Avg Rating', 'Percentage', 'Responses']],
       body: paramRows,
@@ -162,7 +162,7 @@ export const generateFacultyPDF = (faculty, statistics, collegeName) => {
           return [rating, count.toString(), `${pct}%`];
         });
 
-      doc.autoTable({
+     autoTable(doc, {
         startY: y,
         head: [['Rating', 'Count', 'Percentage']],
         body: distRows,
@@ -227,7 +227,7 @@ export const generateDepartmentPDF = (deptKey, facultyList, allStats, collegeNam
     ];
   });
 
-  doc.autoTable({
+  autoTable(doc, {
     startY: y,
     head: [['#', 'Code', 'Name', 'Subject', 'Year/Sem', 'Avg Rating', 'Responses']],
     body: rows,
@@ -289,7 +289,7 @@ export const generateCollegePDF = (college, deptStructure, masterList, getFeedba
       return [(idx + 1).toString(), f.code, f.name, f.subject, avg.toString(), (feedback?.length || 0).toString()];
     });
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       head: [['#', 'Code', 'Name', 'Subject', 'Avg', 'Responses']],
       body: rows,

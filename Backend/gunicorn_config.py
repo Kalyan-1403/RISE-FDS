@@ -9,6 +9,9 @@ timeout = 120
 graceful_timeout = 30
 keepalive = 5
 
+# Performance
+preload_app = True
+
 # Logging
 accesslog = "-"
 errorlog = "-"
@@ -18,3 +21,9 @@ loglevel = "info"
 limit_request_line = 8190
 limit_request_fields = 100
 limit_request_field_size = 8190
+
+# Reverse proxy support (Nginx, Caddy, etc.)
+forwarded_allow_ips = "*"
+secure_scheme_headers = {
+    "X-Forwarded-Proto": "https",
+}

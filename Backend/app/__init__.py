@@ -1,77 +1,208 @@
 import os
+import logging
 from flask import Flask, jsonify
+
 from .config import config_map
 from .extensions import db, migrate, jwt, cors, limiter
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def create_app(config_name=None):
-    """Application factory pattern."""
     if config_name is None:
-        config_name = os.getenv('FLASK_ENV', 'development')
+        config_name = os.getenv(
+            'FLASK_ENV',
+            'development',
+        )
 
     app = Flask(__name__)
-    app.config.from_object(config_map.get(config_name, config_map['development']))
+    app.config.from_object(
+        config_map.get(
+            config_name,
+            config_map['development'],
+        )
+    )
 
-    # Initialize extensions
+    # --- Initialize Extensions ---
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     limiter.init_app(app)
 
-    # CORS - allow frontend origin
-    cors.init_app(app, resources={
-        r"/api/*": {
-            "origins": [app.config['FRONTEND_URL'], "http://localhost:5173", "http://localhost:3000"],
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
-            "supports_credentials": True,
-        }
-    })
+    # --- CORS ---
+    allowed_origins = app.config.get(
+        'CORS_ORIGINS',
+        ['http://localhost:5173'],
+    )
+    if isinstance(allowed_origins, str):
+        allowed_origins = [
+            o.strip()
+            for o in allowed_origins.split(',')
+        ]
 
-    # JWT error handlers
+    cors.init_app(
+        app,
+        resources={r"/api/*": {
+            "origins": allowed_origins,
+            "supports_credentials": True,
+            "methods": [
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "OPTIONS",
+            ],
+            "allow_headers": [
+                "Content-Type",
+                "Authorization",
+            ],
+        }},
+    )
+
+    # --- Talisman: ONLY in production ---
+    if (
+        not app.config.get('TESTING')
+        and not app.config.get('DEBUG')
+    ):
+        try:
+            from flask_talisman import Talisman
+            Talisman(
+                app,
+                force_https=True,
+                strict_transport_security=True,
+                strict_transport_security_max_age=31536000,
+                content_security_policy={
+                    'default-src': "'self'",
+                    'script-src': "'self'",
+                    'style-src': [
+                        "'self'",
+                        "'unsafe-inline'",
+                    ],
+                    'img-src': [
+                        "'self'",
+                        "data:",
+                    ],
+                    'font-src': "'self'",
+                },
+            )
+            logger.info(
+                "🔒 Talisman enabled (production)"
+            )
+        except ImportError:
+            logger.warning(
+                "Flask-Talisman not installed"
+            )
+    else:
+        logger.info(
+            "🔓 Talisman disabled (development)"
+        )
+
+    # --- JWT Error Handlers ---
     @jwt.expired_token_loader
-    def expired_token_callback(jwt_header, jwt_payload):
-        return jsonify({"error": "Token has expired", "code": "TOKEN_EXPIRED"}), 401
+    def expired_token_callback(
+        jwt_header, jwt_payload
+    ):
+        return jsonify({
+            "error": "Token has expired",
+            "code": "TOKEN_EXPIRED",
+        }), 401
 
     @jwt.invalid_token_loader
     def invalid_token_callback(error):
-        return jsonify({"error": "Invalid token", "code": "INVALID_TOKEN"}), 401
+        return jsonify({
+            "error": "Invalid token",
+            "code": "INVALID_TOKEN",
+        }), 401
 
     @jwt.unauthorized_loader
     def missing_token_callback(error):
-        return jsonify({"error": "Authorization required", "code": "MISSING_TOKEN"}), 401
+        return jsonify({
+            "error": "Authorization token required",
+            "code": "MISSING_TOKEN",
+        }), 401
 
-    # Global error handlers
-    @app.errorhandler(404)
-    def not_found(e):
-        return jsonify({"error": "Resource not found"}), 404
+    @jwt.revoked_token_loader
+    def revoked_token_callback(
+        jwt_header, jwt_payload
+    ):
+        return jsonify({
+            "error": "Token has been revoked",
+            "code": "REVOKED_TOKEN",
+        }), 401
 
-    @app.errorhandler(500)
-    def server_error(e):
-        return jsonify({"error": "Internal server error"}), 500
-
-    @app.errorhandler(429)
-    def ratelimit_handler(e):
-        return jsonify({"error": "Too many requests. Please slow down."}), 429
-
-    # Register blueprints
+    # --- Register Blueprints ---
     from .routes.auth import auth_bp
     from .routes.faculty import faculty_bp
-    from .routes.batch import batch_bp
     from .routes.feedback import feedback_bp
+    from .routes.batch import batch_bp
     from .routes.dashboard import dashboard_bp
     from .routes.reports import reports_bp
 
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(faculty_bp, url_prefix='/api/faculty')
-    app.register_blueprint(batch_bp, url_prefix='/api/batch')
-    app.register_blueprint(feedback_bp, url_prefix='/api/feedback')
-    app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
-    app.register_blueprint(reports_bp, url_prefix='/api/reports')
+    app.register_blueprint(
+        auth_bp,
+        url_prefix='/api/auth',
+    )
+    app.register_blueprint(
+        faculty_bp,
+        url_prefix='/api/faculty',
+    )
+    app.register_blueprint(
+        feedback_bp,
+        url_prefix='/api/feedback',
+    )
+    app.register_blueprint(
+        batch_bp,
+        url_prefix='/api/batch',
+    )
+    app.register_blueprint(
+        dashboard_bp,
+        url_prefix='/api/dashboard',
+    )
+    app.register_blueprint(
+        reports_bp,
+        url_prefix='/api/reports',
+    )
 
-    # Health check
-    @app.route('/api/health')
-    def health():
-        return jsonify({"status": "healthy", "version": "1.0.0"})
+    # --- Health Check ---
+    @app.route('/api/health', methods=['GET'])
+    def health_check():
+        try:
+            db.session.execute(db.text('SELECT 1'))
+            db_status = 'connected'
+        except Exception:
+            db_status = 'disconnected'
 
+        return jsonify({
+            "status": "healthy",
+            "database": db_status,
+            "environment": config_name,
+        }), 200
+
+    # --- Global Error Handlers ---
+    @app.errorhandler(404)
+    def not_found(error):
+        return jsonify({
+            "error": "Resource not found",
+        }), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        logger.error(
+            f"Internal server error: {error}"
+        )
+        return jsonify({
+            "error": "Internal server error",
+        }), 500
+
+    @app.errorhandler(429)
+    def rate_limit_error(error):
+        return jsonify({
+            "error": "Too many requests. Please slow down.",
+        }), 429
+
+    logger.info(
+        f"✅ App created with "
+        f"'{config_name}' configuration"
+    )
     return app

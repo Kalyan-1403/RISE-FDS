@@ -1,29 +1,29 @@
+import logging
 from functools import wraps
 from flask import request, jsonify, g
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 from ..models.user import User
 
+logger = logging.getLogger(__name__)
+
+
 def require_auth(fn):
-    """Middleware to require valid JWT token and load active user."""
+    """Middleware to require a valid JWT token and load the active user."""
     @wraps(fn)
     def wrapper(*args, **kwargs):
         try:
             verify_jwt_in_request()
             user_id = get_jwt_identity()
-            
+
             user = User.query.filter_by(user_id=user_id, is_active=True).first()
             if not user:
-                return jsonify({"error": "User account not found or deactivated"}), 401
-            
-            # PERFORMANCE UPGRADE: Store the loaded user in Flask's 'g' object.
-            # This allows your routes to access 'g.current_user' instantly 
-            # without having to query the PostgreSQL database a second time!
+                return jsonify({"error": "User account not found or deactivated", "code": "INVALID_TOKEN"}), 401
+
             g.current_user = user
-            
             return fn(*args, **kwargs)
         except Exception as e:
-            # Added str(e) during development to help debug token errors (expired, invalid signature)
-            return jsonify({"error": "Authentication required", "details": str(e)}), 401
+            logger.warning(f"Auth failed for {request.path}: {e}")
+            return jsonify({"error": "Authentication required", "code": "INVALID_TOKEN"}), 401
     return wrapper
 
 
@@ -35,18 +35,19 @@ def require_role(allowed_roles):
             try:
                 verify_jwt_in_request()
                 user_id = get_jwt_identity()
-                
+
                 user = User.query.filter_by(user_id=user_id, is_active=True).first()
                 if not user:
-                    return jsonify({"error": "User account not found or deactivated"}), 401
-                
-                # SECURITY UPGRADE: Automatically block unauthorized roles
+                    return jsonify({"error": "User account not found or deactivated", "code": "INVALID_TOKEN"}), 401
+
                 if user.role not in allowed_roles:
-                    return jsonify({"error": f"Access forbidden: Requires one of {allowed_roles}"}), 403
-                
+                    logger.warning(f"RBAC denied: user={user_id}, role={user.role}, required={allowed_roles}")
+                    return jsonify({"error": "Access forbidden: insufficient permissions"}), 403
+
                 g.current_user = user
                 return fn(*args, **kwargs)
             except Exception as e:
-                return jsonify({"error": "Authentication required"}), 401
+                logger.warning(f"Auth failed for {request.path}: {e}")
+                return jsonify({"error": "Authentication required", "code": "INVALID_TOKEN"}), 401
         return wrapper
     return decorator

@@ -1,16 +1,48 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-const ProtectedRoute = ({ children, requiredRole }) => {
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  const token = localStorage.getItem('access_token');
+const ProtectedRoute = ({
+  children,
+  requiredRole,
+}) => {
+  const {
+    user,
+    isAuthenticated,
+    loading,
+  } = useAuth();
+  const location = useLocation();
 
-  if (!user || !token) {
-    return <Navigate to="/login" replace />;
+  if (loading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100vh',
+        }}
+      >
+        <p>Verifying authentication...</p>
+      </div>
+    );
   }
 
-  if (requiredRole && user.role !== requiredRole) {
-    return <Navigate to="/login" replace />;
+  if (!isAuthenticated || !user) {
+    return (
+      <Navigate
+        to="/"
+        replace
+        state={{ from: location }}
+      />
+    );
+  }
+
+  if (
+    requiredRole &&
+    user.role !== requiredRole
+  ) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

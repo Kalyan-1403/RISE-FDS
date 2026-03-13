@@ -1,5 +1,10 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import HomePage from './components/HomePage/HomePage';
 import HoDDashboard from './components/HoDDashboard/HoDDashboard';
@@ -13,9 +18,18 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<HomePage />} />
-          <Route path="/feedback/:batchId" element={<StudentFeedback />} />
-
+          <Route
+            path="/"
+            element={<HomePage />}
+          />
+          <Route
+            path="/login"
+            element={<HomePage />}
+          />
+          <Route
+            path="/feedback/:batchId"
+            element={<StudentFeedback />}
+          />
           <Route
             path="/hod/dashboard"
             element={
@@ -24,7 +38,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/admin/dashboard"
             element={
@@ -33,9 +46,10 @@ function App() {
               </ProtectedRoute>
             }
           />
-
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route
+            path="*"
+            element={<Navigate to="/" replace />}
+          />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

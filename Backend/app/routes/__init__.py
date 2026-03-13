@@ -1,1 +1,1 @@
-# Routes package
+# Routes package — all blueprint registration happens in app/__init__.py

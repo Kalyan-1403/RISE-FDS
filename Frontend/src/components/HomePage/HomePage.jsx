@@ -1,6 +1,7 @@
-import dataService from '../../services/dataService.js';
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import dataService from '../../services/dataService.js';
 import './HomePage.css';
 import RegisterModal from '../RegisterModal/RegisterModal.jsx';
 import ForgotPasswordModal from '../ForgotPasswordModal/ForgotPasswordModal.jsx';
@@ -8,11 +9,15 @@ import DeveloperCredit from '../DeveloperCredit/DeveloperCredit.jsx';
 
 const departmentsByCollege = {
   Gandhi: ['S&H', 'CSE', 'ECE'],
-  Prakasam: ['S&H', 'CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'MBA', 'MCA', 'M.TECH'],
+  Prakasam: [
+    'S&H', 'CSE', 'ECE', 'EEE',
+    'CIVIL', 'MECH', 'MBA', 'MCA', 'M.TECH',
+  ],
 };
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const { user, isAuthenticated, loginUser } = useAuth();
 
   const [selectedRole, setSelectedRole] = useState('hod');
   const [selectedCollege, setSelectedCollege] = useState('');
@@ -25,6 +30,16 @@ const HomePage = () => {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // If already logged in, redirect to dashboard
+  if (isAuthenticated && user) {
+    if (user.role === 'admin') {
+      return <Navigate to="/admin/dashboard" replace />;
+    }
+    if (user.role === 'hod') {
+      return <Navigate to="/hod/dashboard" replace />;
+    }
+  }
 
   const handleCollegeChange = (e) => {
     setSelectedCollege(e.target.value);
@@ -79,7 +94,9 @@ const HomePage = () => {
 
     if (selectedRole === 'hod') {
       if (!selectedCollege || !selectedDepartment) {
-        setError('Please select college and department');
+        setError(
+          'Please select college and department'
+        );
         return;
       }
     }
@@ -101,30 +118,43 @@ const HomePage = () => {
       const result = await dataService.login(loginData);
 
       if (result && result.success) {
+        // Update AuthContext state so React
+        // re-renders without needing hard refresh
+        loginUser(
+          result.user,
+          result.access_token,
+          result.refresh_token,
+        );
+
         if (result.user.role === 'admin') {
-          navigate('/admin/dashboard');
+          navigate('/admin/dashboard', { replace: true });
         } else {
-          navigate('/hod/dashboard');
+          navigate('/hod/dashboard', { replace: true });
         }
       } else {
-        setError('Login failed. Please check your credentials.');
+        setError(
+          'Login failed. Please check your credentials.'
+        );
       }
     } catch (err) {
       console.error('Login error:', err);
-      if (err.response && err.response.data && err.response.data.error) {
-        setError(err.response.data.error);
-      } else if (err.message) {
+      if (err.message) {
         setError(err.message);
       } else {
-        setError('Login failed. Please check your credentials.');
+        setError(
+          'Login failed. Please check your credentials.'
+        );
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const needsCollegeSelection = selectedRole === 'hod' && !collegeConfirmed;
-  const showCredentials = selectedRole === 'admin' || (selectedRole === 'hod' && collegeConfirmed);
+  const needsCollegeSelection =
+    selectedRole === 'hod' && !collegeConfirmed;
+  const showCredentials =
+    selectedRole === 'admin' ||
+    (selectedRole === 'hod' && collegeConfirmed);
 
   return (
     <div className="login-page">
@@ -150,7 +180,9 @@ const HomePage = () => {
         <div className="role-selector">
           <button
             type="button"
-            className={`role-btn ${selectedRole === 'hod' ? 'active' : ''}`}
+            className={`role-btn ${
+              selectedRole === 'hod' ? 'active' : ''
+            }`}
             onClick={() => handleRoleChange('hod')}
           >
             <div className="role-icon">📚</div>
@@ -158,7 +190,9 @@ const HomePage = () => {
           </button>
           <button
             type="button"
-            className={`role-btn ${selectedRole === 'admin' ? 'active' : ''}`}
+            className={`role-btn ${
+              selectedRole === 'admin' ? 'active' : ''
+            }`}
             onClick={() => handleRoleChange('admin')}
           >
             <div className="role-icon">⚙️</div>
@@ -170,7 +204,9 @@ const HomePage = () => {
           <div className="login-form">
             <div className="input-group">
               <label>
-                <span className="label-icon">🏫</span>
+                <span className="label-icon">
+                  🏫
+                </span>
                 Select College
               </label>
               <select
@@ -178,15 +214,23 @@ const HomePage = () => {
                 onChange={handleCollegeChange}
                 className="college-select"
               >
-                <option value="">Choose College</option>
-                <option value="Gandhi">Gandhi</option>
-                <option value="Prakasam">Prakasam</option>
+                <option value="">
+                  Choose College
+                </option>
+                <option value="Gandhi">
+                  Gandhi
+                </option>
+                <option value="Prakasam">
+                  Prakasam
+                </option>
               </select>
             </div>
 
             <div className="input-group">
               <label>
-                <span className="label-icon">📖</span>
+                <span className="label-icon">
+                  📖
+                </span>
                 Select Department
               </label>
               <select
@@ -195,9 +239,13 @@ const HomePage = () => {
                 disabled={!selectedCollege}
                 className="department-select"
               >
-                <option value="">Choose Department</option>
+                <option value="">
+                  Choose Department
+                </option>
                 {selectedCollege &&
-                  departmentsByCollege[selectedCollege].map((dept) => (
+                  departmentsByCollege[
+                    selectedCollege
+                  ].map((dept) => (
                     <option key={dept} value={dept}>
                       {dept}
                     </option>
@@ -215,12 +263,20 @@ const HomePage = () => {
             {selectedRole === 'hod' && (
               <div className="selection-info">
                 <div className="info-row">
-                  <span className="info-label">🏫 College:</span>
-                  <span className="info-value">{selectedCollege}</span>
+                  <span className="info-label">
+                    🏫 College:
+                  </span>
+                  <span className="info-value">
+                    {selectedCollege}
+                  </span>
                 </div>
                 <div className="info-row">
-                  <span className="info-label">📖 Department:</span>
-                  <span className="info-value">{selectedDepartment}</span>
+                  <span className="info-label">
+                    📖 Department:
+                  </span>
+                  <span className="info-value">
+                    {selectedDepartment}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -234,7 +290,9 @@ const HomePage = () => {
 
             <div className="input-group">
               <label>
-                <span className="label-icon">👤</span>
+                <span className="label-icon">
+                  👤
+                </span>
                 User ID
               </label>
               <input
@@ -250,12 +308,16 @@ const HomePage = () => {
 
             <div className="input-group">
               <label>
-                <span className="label-icon">🔒</span>
+                <span className="label-icon">
+                  🔒
+                </span>
                 Password
               </label>
               <div className="password-input-wrapper">
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type={
+                    showPassword ? 'text' : 'password'
+                  }
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
@@ -266,7 +328,9 @@ const HomePage = () => {
                 <button
                   type="button"
                   className="eye-toggle-login"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() =>
+                    setShowPassword(!showPassword)
+                  }
                 >
                   {showPassword ? '👁️' : '👁️‍🗨️'}
                 </button>
@@ -275,7 +339,9 @@ const HomePage = () => {
 
             {error && (
               <div className="error-alert">
-                <span className="error-icon">⚠️</span>
+                <span className="error-icon">
+                  ⚠️
+                </span>
                 <span>{error}</span>
               </div>
             )}
@@ -306,7 +372,9 @@ const HomePage = () => {
             <button
               type="button"
               className="link-btn register-link"
-              onClick={() => setShowRegisterModal(true)}
+              onClick={() =>
+                setShowRegisterModal(true)
+              }
             >
               Register
             </button>
@@ -314,7 +382,9 @@ const HomePage = () => {
             <button
               type="button"
               className="link-btn forgot-link"
-              onClick={() => setShowForgotModal(true)}
+              onClick={() =>
+                setShowForgotModal(true)
+              }
             >
               Forgot Password?
             </button>
@@ -325,10 +395,18 @@ const HomePage = () => {
       <DeveloperCredit />
 
       {showRegisterModal && (
-        <RegisterModal onClose={() => setShowRegisterModal(false)} />
+        <RegisterModal
+          onClose={() =>
+            setShowRegisterModal(false)
+          }
+        />
       )}
       {showForgotModal && (
-        <ForgotPasswordModal onClose={() => setShowForgotModal(false)} />
+        <ForgotPasswordModal
+          onClose={() =>
+            setShowForgotModal(false)
+          }
+        />
       )}
     </div>
   );

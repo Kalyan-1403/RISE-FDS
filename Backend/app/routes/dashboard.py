@@ -1,11 +1,13 @@
+import logging
 from flask import Blueprint, jsonify, request, g
 from ..models.faculty import Faculty
 from ..models.feedback import FeedbackRating, FeedbackSubmission
 from ..models.batch import Batch
 from ..extensions import db
-
-# Import our powerful new RBAC middleware!
 from ..middleware.auth_middleware import require_role
+from ..utils.validators import sanitize_string
+
+logger = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -13,7 +15,7 @@ dashboard_bp = Blueprint('dashboard', __name__)
 @dashboard_bp.route('/admin', methods=['GET'])
 @require_role(['admin'])
 def admin_dashboard():
-    # The middleware already verified this user is an admin!
+    """Admin dashboard — aggregated stats across all colleges."""
     total_faculty = Faculty.query.filter_by(is_active=True).count()
     total_batches = Batch.query.filter_by(is_active=True).count()
     total_submissions = FeedbackSubmission.query.count()
@@ -38,19 +40,19 @@ def admin_dashboard():
 @dashboard_bp.route('/hod', methods=['GET'])
 @require_role(['hod'])
 def hod_dashboard():
-    # We easily grab the user from Flask's 'g' object provided by the middleware
+    """HoD dashboard — department-scoped data."""
     user = g.current_user
 
     faculty = Faculty.query.filter_by(
         college=user.college,
         department=user.department,
-        is_active=True
+        is_active=True,
     ).all()
 
     batches = Batch.query.filter_by(
         college=user.college,
         department=user.department,
-        is_active=True
+        is_active=True,
     ).order_by(Batch.created_at.desc()).all()
 
     return jsonify({
@@ -64,62 +66,100 @@ def hod_dashboard():
 @dashboard_bp.route('/department', methods=['POST'])
 @require_role(['admin'])
 def add_department():
-    # Since departments are dynamically tracked in your frontend's localStorage 
-    # and derived from Faculty rows, we don't need to INSERT into a database table here.
-    # This endpoint acts as a secure handshake confirming the backend is alive.
+    """Acknowledge department addition from frontend."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    college = sanitize_string(data.get('college', ''), 100)
+    dept_name = sanitize_string(data.get('deptName', ''), 50)
+
+    if not college or not dept_name:
+        return jsonify({"error": "College and department name are required"}), 400
+
+    logger.info(f"Department added: {dept_name} in {college}")
+
     return jsonify({"success": True, "message": "Department recognized by backend."}), 200
 
 
 @dashboard_bp.route('/department', methods=['DELETE'])
 @require_role(['admin'])
 def delete_department():
+    """Cascade-delete all data for a department."""
     data = request.get_json()
-    college = data.get('college')
-    dept = data.get('dept')
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    college = sanitize_string(data.get('college', ''), 100)
+    dept = sanitize_string(data.get('dept', ''), 50)
 
     if not college or not dept:
         return jsonify({"error": "College and department are required"}), 400
 
     try:
-        # 1. Delete associated Batches
+        # Delete associated feedback submissions via batches
         batches = Batch.query.filter_by(college=college, department=dept).all()
         for b in batches:
+            # Delete submissions and their ratings for this batch
+            submissions = FeedbackSubmission.query.filter_by(batch_db_id=b.id).all()
+            for s in submissions:
+                FeedbackRating.query.filter_by(submission_id=s.id).delete()
+                db.session.delete(s)
             db.session.delete(b)
 
-        # 2. Delete associated Faculty (this will auto-cascade and delete FeedbackRatings!)
+        # Delete associated faculty
         faculties = Faculty.query.filter_by(college=college, department=dept).all()
         for f in faculties:
+            # Delete any remaining ratings for this faculty
+            FeedbackRating.query.filter_by(faculty_id=f.id).delete()
             db.session.delete(f)
 
         db.session.commit()
+
+        logger.info(f"Department deleted: {dept} in {college}")
+
         return jsonify({"success": True, "message": f"{dept} department deleted successfully"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Failed to delete department {dept} in {college}: {e}")
+        return jsonify({"error": "Failed to delete department. Please try again."}), 500
 
 
 @dashboard_bp.route('/college', methods=['DELETE'])
 @require_role(['admin'])
 def delete_college():
+    """Cascade-delete all data for an entire college."""
     data = request.get_json()
-    college = data.get('college')
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    college = sanitize_string(data.get('college', ''), 100)
 
     if not college:
         return jsonify({"error": "College name is required"}), 400
 
     try:
-        # 1. Wipes all batches in the entire college
+        # Delete all batches and their submissions/ratings
         batches = Batch.query.filter_by(college=college).all()
         for b in batches:
+            submissions = FeedbackSubmission.query.filter_by(batch_db_id=b.id).all()
+            for s in submissions:
+                FeedbackRating.query.filter_by(submission_id=s.id).delete()
+                db.session.delete(s)
             db.session.delete(b)
 
-        # 2. Wipes all faculty in the entire college
+        # Delete all faculty and their remaining ratings
         faculties = Faculty.query.filter_by(college=college).all()
         for f in faculties:
+            FeedbackRating.query.filter_by(faculty_id=f.id).delete()
             db.session.delete(f)
 
         db.session.commit()
-        return jsonify({"success": True, "message": f"{college} College and all data deleted"}), 200
+
+        logger.info(f"College deleted: {college}")
+
+        return jsonify({"success": True, "message": f"{college} and all associated data deleted"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Failed to delete college {college}: {e}")
+        return jsonify({"error": "Failed to delete college. Please try again."}), 500
