@@ -61,7 +61,7 @@ echo ""
 echo -e "${YELLOW}--- Authentication ---${NC}"
 ADMIN_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/login" \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"ADMIN","password":"admin@123","role":"admin"}')
+  -d "{\"user_id\":\"ADMIN\",\"password\":\"${ADMIN_PASSWORD:?Set ADMIN_PASSWORD env var}\",\"role\":\"admin\"}")
 
 ADMIN_TOKEN=$(echo $ADMIN_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
 

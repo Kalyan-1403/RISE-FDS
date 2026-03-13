@@ -34,10 +34,6 @@ class DevelopmentConfig(BaseConfig):
     DEBUG = True
     SQLALCHEMY_ECHO = False
 
-    # Allow dev fallbacks ONLY in development
-    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-only-secret-key-not-for-production')
-    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'dev-only-jwt-key-not-for-production')
-
 
 class ProductionConfig(BaseConfig):
     DEBUG = False
