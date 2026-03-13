@@ -13,3 +13,4 @@ marshmallow==3.23.1
 bleach==6.2.0
 gunicorn
 psycopg2-binary
+python-dotenv
