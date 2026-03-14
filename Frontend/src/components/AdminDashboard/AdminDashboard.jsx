@@ -8,7 +8,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import DeveloperCredit from '../DeveloperCredit/DeveloperCredit.jsx';
 import dataService from '../../services/dataService.js';
-import { fetchAISummary } from '../../services/api.js';
 import './AdminDashboard.css';
 import { generateFacultyPDF } from '../../utils/pdfGenerator';
 import { generateFacultyExcel } from '../../utils/excelGenerator';
@@ -632,7 +631,6 @@ const AdminDashboard = () => {
     setSuggestionData(analyzeSuggestions(uniqueComments));
 
     const targetLabel = facultyName ? facultyName : `${dept} Department`;
-    const summaryResult = await fetchAISummary(uniqueComments, targetLabel);
     setLlmSummary(summaryResult);
     setIsSummarizing(false);
   };
