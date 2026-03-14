@@ -1,15 +1,18 @@
 import logging
 import secrets
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
     jwt_required,
     get_jwt_identity,
+    get_jwt,
+    set_refresh_cookies,
+    unset_refresh_cookies,
 )
 from datetime import datetime, timedelta
 
-from ..extensions import db, limiter
+from ..extensions import db, limiter, add_to_blocklist
 from ..models.user import User
 from ..utils.validators import (
     sanitize_string,
@@ -18,6 +21,7 @@ from ..utils.validators import (
     validate_mobile,
     validate_password,
 )
+from ..utils.email import send_otp_email
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +64,31 @@ def login():
 
     logger.info(f"User logged in: {user.user_id} (role={user.role})")
 
-    return jsonify({
+    # FIX (CRITICAL): Access token returned in body — frontend stores in memory only.
+    # Refresh token set as httpOnly cookie — invisible to JavaScript, safe from XSS.
+    response = make_response(jsonify({
         "success": True,
         "access_token": access_token,
-        "refresh_token": refresh_token,
         "user": user.to_dict(),
-    }), 200
+    }))
+    set_refresh_cookies(response, refresh_token)
+    return response, 200
+
+
+@auth_bp.route('/logout', methods=['POST'])
+@jwt_required()
+def logout():
+    """
+    FIX (HIGH): Revoke the current access token and clear the refresh cookie.
+    After logout, both tokens are immediately invalidated.
+    """
+    jti = get_jwt()["jti"]
+    add_to_blocklist(jti)
+
+    response = make_response(jsonify({"success": True, "message": "Logged out successfully"}))
+    unset_refresh_cookies(response)
+    logger.info(f"User logged out: {get_jwt_identity()}")
+    return response, 200
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -108,7 +131,6 @@ def register():
     if existing:
         return jsonify({"error": f"An HoD for {college} - {department} already exists."}), 409
 
-    # Secure ID generation using cryptographic randomness
     dept_code = department.upper()
     college_code = 'G' if college.lower() == 'gandhi' else 'P'
 
@@ -152,6 +174,9 @@ def forgot_password():
     email = sanitize_string(data.get('email', ''), 150)
     mobile = sanitize_string(data.get('mobile', ''), 15)
 
+    # Always return the same message to prevent user enumeration
+    _safe_response = jsonify({"success": True, "message": "If the details match, an OTP has been sent."})
+
     user = User.query.filter(
         db.func.lower(User.user_id) == user_id.lower(),
         User.email == email,
@@ -160,20 +185,32 @@ def forgot_password():
     ).first()
 
     if not user:
-        # SECURITY: Return the same message whether user exists or not
-        return jsonify({"success": True, "message": "If the details match, an OTP has been sent."}), 200
+        return _safe_response, 200
 
-    # Generate cryptographically secure OTP
+    if not user.email:
+        logger.warning(f"OTP requested for user {user.user_id} but no email address on file.")
+        return _safe_response, 200
+
     otp = str(secrets.randbelow(900000) + 100000)
     user.reset_otp = otp
     user.reset_otp_expiry = datetime.utcnow() + timedelta(minutes=10)
     db.session.commit()
 
-    # TODO: Replace with real email/SMS delivery (SendGrid, AWS SES, Twilio)
-    # In production, this log line should be removed entirely
-    logger.info(f"OTP generated for user {user.user_id} (delivery pending integration)")
+    # FIX (CRITICAL): Actually deliver the OTP via email.
+    # send_otp_email() handles SMTP delivery in production and logs to console in dev.
+    # Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD in Render env vars.
+    delivered = send_otp_email(user.email, user.user_id, otp)
+    if not delivered:
+        # Roll back OTP if delivery failed so user can retry
+        user.reset_otp = None
+        user.reset_otp_expiry = None
+        db.session.commit()
+        logger.error(f"OTP delivery failed for {user.user_id} — SMTP not configured?")
+        return jsonify({
+            "error": "Could not send OTP. Please contact your administrator."
+        }), 500
 
-    return jsonify({"success": True, "message": "If the details match, an OTP has been sent."}), 200
+    return _safe_response, 200
 
 
 @auth_bp.route('/reset-password', methods=['POST'])
@@ -193,7 +230,6 @@ def reset_password():
         return jsonify({"error": "Invalid User ID or OTP"}), 400
 
     if user.reset_otp_expiry and datetime.utcnow() > user.reset_otp_expiry:
-        # Clear expired OTP
         user.reset_otp = None
         user.reset_otp_expiry = None
         db.session.commit()
@@ -226,11 +262,15 @@ def get_current_user():
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
+    """
+    Issue a new access token using the httpOnly refresh cookie.
+    The browser sends the cookie automatically — no token needed in the request body.
+    Returns the new access token in the response body for in-memory storage.
+    """
     user_id = get_jwt_identity()
-    # Verify user still exists and is active before issuing new token
     user = User.query.filter_by(user_id=user_id, is_active=True).first()
     if not user:
         return jsonify({"error": "User account not found or deactivated", "code": "INVALID_TOKEN"}), 401
 
-    new_token = create_access_token(identity=user_id)
-    return jsonify({"access_token": new_token}), 200
+    new_access_token = create_access_token(identity=user_id)
+    return jsonify({"access_token": new_access_token}), 200

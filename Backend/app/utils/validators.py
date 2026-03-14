@@ -1,12 +1,13 @@
 import re
-import bleach
+import nh3  # Replaces deprecated bleach — active Rust-backed HTML sanitizer
 
 
 def sanitize_string(value, max_length=500):
     """Strip all HTML tags and truncate to max_length."""
     if not isinstance(value, str):
         return ''
-    cleaned = bleach.clean(value, tags=[], strip=True)
+    # nh3.clean with tags=set() strips every HTML tag (equivalent to bleach strip=True, tags=[])
+    cleaned = nh3.clean(value, tags=set())
     return cleaned.strip()[:max_length]
 
 

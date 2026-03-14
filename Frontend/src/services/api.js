@@ -1,22 +1,50 @@
 import axios from 'axios';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 if (!API_BASE_URL) {
-  console.error(
-    '❌ VITE_API_BASE_URL is not set.'
-  );
+  console.error('❌ VITE_API_BASE_URL is not set.');
 }
 
 const api = axios.create({
   baseURL: API_BASE_URL || '',
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
   timeout: 30000,
+  // FIX (CRITICAL): Send httpOnly refresh cookie on cross-origin requests.
+  withCredentials: true,
 });
 
+// ─── In-Memory Access Token Store ────────────────────────────────────────────
+//
+// FIX (CRITICAL): Access token is now stored in module memory, NOT localStorage.
+// localStorage is readable by any JavaScript on the page (XSS risk).
+// Memory storage means the token is cleared on page refresh — that's intentional.
+// Session is restored transparently via the httpOnly refresh cookie on page load
+// (see AuthContext.jsx → restoreSession).
+//
+let _accessToken = null;
+
+export const setAccessToken = (token) => {
+  _accessToken = token;
+};
+
+export const clearAccessToken = () => {
+  _accessToken = null;
+};
+
+// ─── Request Interceptor ─────────────────────────────────────────────────────
+// Attach the in-memory access token as a Bearer header on every request.
+api.interceptors.request.use(
+  (config) => {
+    if (_accessToken) {
+      config.headers.Authorization = `Bearer ${_accessToken}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
+
+// ─── Response Interceptor: Silent Token Refresh ───────────────────────────────
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -29,25 +57,10 @@ const processQueue = (error, token = null) => {
 };
 
 const forceLogout = () => {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
+  clearAccessToken();
   localStorage.removeItem('user');
   window.location.href = '/';
 };
-
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem(
-      'access_token'
-    );
-    if (token) {
-      config.headers.Authorization =
-        `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
 
 api.interceptors.response.use(
   (response) => response,
@@ -55,70 +68,39 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     if (
-      error.response &&
-      error.response.status === 401 &&
+      error.response?.status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url.includes(
-        '/auth/refresh'
-      ) &&
-      !originalRequest.url.includes(
-        '/auth/login'
-      )
+      !originalRequest.url.includes('/auth/refresh') &&
+      !originalRequest.url.includes('/auth/login')
     ) {
       if (isRefreshing) {
-        return new Promise(
-          (resolve, reject) => {
-            failedQueue.push({
-              resolve,
-              reject,
-            });
-          }
-        )
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
           .then((token) => {
-            originalRequest.headers.Authorization =
-              `Bearer ${token}`;
+            originalRequest.headers.Authorization = `Bearer ${token}`;
             return api(originalRequest);
           })
-          .catch((err) =>
-            Promise.reject(err)
-          );
+          .catch((err) => Promise.reject(err));
       }
 
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken =
-        localStorage.getItem('refresh_token');
-      if (!refreshToken) {
-        isRefreshing = false;
-        forceLogout();
-        return Promise.reject(error);
-      }
-
       try {
+        // FIX (CRITICAL): The refresh token is now an httpOnly cookie.
+        // The browser sends it automatically with withCredentials=true.
+        // No manual token extraction from localStorage needed.
         const { data } = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
-          {
-            headers: {
-              Authorization:
-                `Bearer ${refreshToken}`,
-              'Content-Type':
-                'application/json',
-            },
-            timeout: 10000,
-          }
+          { withCredentials: true, timeout: 10000 },
         );
 
-        const newAccessToken =
-          data.access_token;
-        localStorage.setItem(
-          'access_token',
-          newAccessToken
-        );
+        const newAccessToken = data.access_token;
+        setAccessToken(newAccessToken);
         processQueue(null, newAccessToken);
-        originalRequest.headers.Authorization =
-          `Bearer ${newAccessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
@@ -130,106 +112,66 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
+// ─── API Modules ─────────────────────────────────────────────────────────────
+
 export const authAPI = {
-  login: (data) =>
-    api.post('/auth/login', data),
-  register: (data) =>
-    api.post('/auth/register', data),
+  login: (data) => api.post('/auth/login', data),
+  register: (data) => api.post('/auth/register', data),
+  logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
   refresh: () => api.post('/auth/refresh'),
-  forgotPassword: (data) =>
-    api.post('/auth/forgot-password', data),
-  resetPassword: (data) =>
-    api.post('/auth/reset-password', data),
+  forgotPassword: (data) => api.post('/auth/forgot-password', data),
+  resetPassword: (data) => api.post('/auth/reset-password', data),
 };
 
 export const facultyAPI = {
   getAll: () => api.get('/faculty'),
   getById: (id) => api.get(`/faculty/${id}`),
   create: (data) => api.post('/faculty', data),
-  update: (id, data) =>
-    api.put(`/faculty/${id}`, data),
-  delete: (id) =>
-    api.delete(`/faculty/${id}`),
+  update: (id, data) => api.put(`/faculty/${id}`, data),
+  delete: (id) => api.delete(`/faculty/${id}`),
 };
 
 export const batchAPI = {
-  create: (data) =>
-    api.post('/batch/create', data),
-  getById: (batchId) =>
-    api.get(`/batch/${batchId}`),
+  create: (data) => api.post('/batch/create', data),
+  getById: (batchId) => api.get(`/batch/${batchId}`),
   list: () => api.get('/batch/list'),
 };
 
 export const feedbackAPI = {
-  submit: (data) =>
-    api.post('/feedback/submit', data),
-  getFacultyStats: (facultyId) =>
-    api.get(
-      `/feedback/faculty/${facultyId}/stats`
-    ),
-  deleteFacultyResponses: (facultyId) =>
-    api.delete(
-      `/feedback/faculty/${facultyId}/responses`
-    ),
+  submit: (data) => api.post('/feedback/submit', data),
+  getFacultyStats: (facultyId) => api.get(`/feedback/faculty/${facultyId}/stats`),
+  deleteFacultyResponses: (facultyId) => api.delete(`/feedback/faculty/${facultyId}/responses`),
   deleteDepartmentResponses: (college, dept) =>
-    api.delete(
-      '/feedback/department/responses',
-      { data: { college, dept } }
-    ),
+    api.delete('/feedback/department/responses', { data: { college, dept } }),
   deleteCollegeResponses: (college) =>
-    api.delete(
-      '/feedback/college/responses',
-      { data: { college } }
-    ),
+    api.delete('/feedback/college/responses', { data: { college } }),
 };
 
 export const dashboardAPI = {
   getAdmin: () => api.get('/dashboard/admin'),
   getHoD: () => api.get('/dashboard/hod'),
-  addDepartment: (data) =>
-    api.post('/dashboard/department', data),
+  addDepartment: (data) => api.post('/dashboard/department', data),
   deleteDepartment: (college, dept) =>
-    api.delete('/dashboard/department', {
-      data: { college, dept },
-    }),
+    api.delete('/dashboard/department', { data: { college, dept } }),
   deleteCollege: (college) =>
-    api.delete('/dashboard/college', {
-      data: { college },
-    }),
+    api.delete('/dashboard/college', { data: { college } }),
 };
 
 export const reportsAPI = {
-  getFacultyData: (facultyId) =>
-    api.get(
-      `/reports/faculty/${facultyId}/data`
-    ),
+  getFacultyData: (facultyId) => api.get(`/reports/faculty/${facultyId}/data`),
 };
 
 export const healthAPI = {
   check: () => api.get('/health'),
 };
-// Add this to the bottom of api.js
-export const fetchAISummary = async (comments, targetName) => {
-  try {
-    // Note the /api/ai/summarize route matches what we set up in Flask
-    const response = await fetch('/api/ai/summarize', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        // 'Authorization': `Bearer ${localStorage.getItem('token')}` // Uncomment if your route requires auth
-      },
-      body: JSON.stringify({ comments, targetName }),
-    });
-    
-    if (!response.ok) throw new Error('Failed to fetch AI summary');
-    return await response.json(); 
-  } catch (error) {
-    console.error('Error fetching AI summary:', error);
-    return null;
-  }
-};
+
+// FIX (HIGH): Removed the broken fetchAISummary function.
+// The /api/ai/summarize backend route was never implemented, causing silent 404s
+// in production. Re-add this when the backend route is properly built and
+// secured with JWT authentication.
+
 export default api;

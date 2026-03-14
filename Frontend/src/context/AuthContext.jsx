@@ -5,108 +5,97 @@ import React, {
   useEffect,
   useCallback,
 } from 'react';
-import { authAPI } from '../services/api';
+import { authAPI, setAccessToken, clearAccessToken } from '../services/api';
 
 const AuthContext = createContext(null);
+
+// ─── Non-sensitive user profile cache ────────────────────────────────────────
+// We cache the user object (name, role, department etc.) in localStorage so the
+// UI can show the correct dashboard immediately on page load before the silent
+// refresh completes. This is NOT a secret — it contains no tokens, no passwords.
+const USER_CACHE_KEY = 'user';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // ── Silent session restore on page load ──────────────────────────────────
+  // FIX (CRITICAL): We no longer read tokens from localStorage.
+  // Instead, we call /auth/refresh which uses the httpOnly refresh cookie
+  // (sent automatically by the browser). If the cookie is valid, we receive
+  // a fresh access token and store it in module memory only.
   useEffect(() => {
-    const verifyAuth = async () => {
+    const restoreSession = async () => {
       try {
-        const savedUser = localStorage.getItem('user');
-        const token = localStorage.getItem(
-          'access_token'
-        );
+        // Attempt to get a new access token via the refresh cookie
+        const { data } = await authAPI.refresh();
+        const newAccessToken = data.access_token;
 
-        if (!savedUser || !token) {
-          setLoading(false);
-          return;
+        if (!newAccessToken) {
+          throw new Error('No access token in refresh response');
         }
 
-        // Try to verify with backend
+        // Store access token in memory (api.js module scope)
+        setAccessToken(newAccessToken);
+
+        // Verify with backend and get fresh user data
         try {
-          const response = await authAPI.me();
-          if (
-            response.data &&
-            response.data.user
-          ) {
-            const verifiedUser = response.data.user;
-            localStorage.setItem(
-              'user',
-              JSON.stringify(verifiedUser),
-            );
+          const meResponse = await authAPI.me();
+          if (meResponse.data?.user) {
+            const verifiedUser = meResponse.data.user;
+            localStorage.setItem(USER_CACHE_KEY, JSON.stringify(verifiedUser));
             setUser(verifiedUser);
           }
-        } catch (apiError) {
-          // IMPORTANT: Only clear tokens on
-          // explicit 401 (invalid/expired token).
-          // Do NOT clear on network errors,
-          // timeouts, or CORS issues.
-          if (
-            apiError.response &&
-            apiError.response.status === 401
-          ) {
-            localStorage.removeItem('user');
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
-            setLoading(false);
-            return;
+        } catch {
+          // Refresh worked but /me failed — use cached profile if available
+          const cached = localStorage.getItem(USER_CACHE_KEY);
+          if (cached) {
+            try { setUser(JSON.parse(cached)); } catch { /* ignore parse error */ }
           }
-
-          // Network error or backend down:
-          // Trust the cached user, don't logout
-          const parsed = JSON.parse(savedUser);
-          setUser(parsed);
         }
-      } catch (e) {
-        // JSON parse error on savedUser
-        localStorage.removeItem('user');
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+      } catch {
+        // Refresh failed — no valid session (cookie expired or missing)
+        clearAccessToken();
+        localStorage.removeItem(USER_CACHE_KEY);
       } finally {
         setLoading(false);
       }
     };
 
-    verifyAuth();
+    restoreSession();
   }, []);
 
-  const loginUser = useCallback(
-    (userData, accessToken, refreshToken) => {
-      localStorage.setItem(
-        'user',
-        JSON.stringify(userData),
-      );
-      if (accessToken) {
-        localStorage.setItem(
-          'access_token',
-          accessToken,
-        );
-      }
-      if (refreshToken) {
-        localStorage.setItem(
-          'refresh_token',
-          refreshToken,
-        );
-      }
-      setUser(userData);
-    },
-    [],
-  );
-
-  const logoutUser = useCallback(() => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    setUser(null);
+  // ── Login ─────────────────────────────────────────────────────────────────
+  // Called by HomePage after a successful login API response.
+  // Stores the access token in memory and caches non-sensitive user data.
+  const loginUser = useCallback((userData, accessToken) => {
+    // FIX (CRITICAL): Access token goes into module memory only.
+    // Refresh token was already set as an httpOnly cookie by the backend — no
+    // action required here for the refresh token.
+    if (accessToken) {
+      setAccessToken(accessToken);
+    }
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData));
+    setUser(userData);
   }, []);
 
-  const isAuthenticated =
-    !!user &&
-    !!localStorage.getItem('access_token');
+  // ── Logout ────────────────────────────────────────────────────────────────
+  const logoutUser = useCallback(async () => {
+    try {
+      // FIX (HIGH): Tell the server to revoke the current access token and
+      // clear the httpOnly refresh cookie. Without this call, the refresh
+      // cookie remains valid until it naturally expires.
+      await authAPI.logout();
+    } catch {
+      // Even if the server call fails, clear client state
+    } finally {
+      clearAccessToken();
+      localStorage.removeItem(USER_CACHE_KEY);
+      setUser(null);
+    }
+  }, []);
+
+  const isAuthenticated = !!user;
 
   if (loading) {
     return (
@@ -141,9 +130,7 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error(
-      'useAuth must be used within AuthProvider'
-    );
+    throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
 };

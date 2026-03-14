@@ -10,7 +10,4 @@ python-dotenv==1.0.1
 gunicorn==23.0.0
 bcrypt==4.2.1
 marshmallow==3.23.1
-bleach==6.2.0
-gunicorn
-psycopg2-binary
-python-dotenv
+nh3==0.2.21

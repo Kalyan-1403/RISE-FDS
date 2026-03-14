@@ -1,0 +1,38 @@
+# ─── Environment / Secrets ───────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Python Bytecode ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# ─── Virtual Environments ────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ─── Distribution / Build ────────────────────────────────────
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# ─── Logs ────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── IDE ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ─── Testing ─────────────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage

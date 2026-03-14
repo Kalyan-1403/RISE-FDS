@@ -1,0 +1,93 @@
+# render.yaml — Render deployment configuration
+# Place this file at the project root (next to the Backend/ and Frontend/ folders).
+# Commit it to Git. Render auto-detects it on push.
+#
+# Before deploying:
+#   1. Create a PostgreSQL database named "fds-db" in your Render dashboard.
+#   2. Set the secret environment variables marked "sync: false" in the Render dashboard.
+#   3. Replace "your-frontend-domain.onrender.com" with your actual frontend URL.
+
+services:
+  # ── Backend (Flask + Gunicorn) ──────────────────────────────────────────────
+  - type: web
+    name: fds-backend
+    env: python
+    region: oregon
+    plan: free
+    rootDir: Backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -c gunicorn_config.py "app:create_app('production')"
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: FLASK_ENV
+        value: production
+
+      # Auto-generated cryptographic secrets — Render generates these on first deploy
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+
+      # Linked to the Render PostgreSQL database below
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fds-db
+          property: connectionString
+
+      # Replace with your real frontend Render URL after deploying the frontend
+      - key: FRONTEND_URL
+        value: https://your-frontend-domain.onrender.com
+      - key: CORS_ORIGINS
+        value: https://your-frontend-domain.onrender.com
+
+      # Admin account credentials — set these manually in the Render dashboard
+      # Never commit real values here
+      - key: ADMIN_EMAIL
+        sync: false    # Set in dashboard: admin@rise.edu
+      - key: ADMIN_PASSWORD
+        sync: false    # Set in dashboard: use a strong password
+
+      # Email (SMTP) for OTP delivery — set in Render dashboard
+      - key: SMTP_HOST
+        sync: false    # e.g. smtp.sendgrid.net
+      - key: SMTP_PORT
+        sync: false    # e.g. 587
+      - key: SMTP_USER
+        sync: false    # e.g. apikey (for SendGrid) or your email address
+      - key: SMTP_PASSWORD
+        sync: false    # your SMTP password or SendGrid API key
+      - key: SMTP_FROM_EMAIL
+        sync: false    # e.g. noreply@rise.edu
+
+      # Trusted reverse proxy IPs — Render's internal network
+      # Check your Render dashboard for the exact CIDR or IP
+      - key: TRUSTED_PROXY_IPS
+        value: 10.0.0.0/8
+
+  # ── Frontend (React + Vite static build) ───────────────────────────────────
+  - type: web
+    name: fds-frontend
+    env: static
+    region: oregon
+    plan: free
+    rootDir: Frontend
+    buildCommand: npm install && npm run build:prod
+    staticPublishPath: dist
+
+    # SPA routing: redirect all paths to index.html
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    envVars:
+      # Replace with your actual backend URL after deploying the backend
+      - key: VITE_API_BASE_URL
+        value: https://fds-backend.onrender.com/api
+
+# ── PostgreSQL Database ─────────────────────────────────────────────────────
+databases:
+  - name: fds-db
+    plan: free
+    region: oregon

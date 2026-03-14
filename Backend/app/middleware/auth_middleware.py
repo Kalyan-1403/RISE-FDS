@@ -8,7 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 def require_auth(fn):
-    """Middleware to require a valid JWT token and load the active user."""
+    """Middleware to require a valid JWT token and load the active user.
+    Token revocation (blocklist) is checked automatically by the
+    @jwt.token_in_blocklist_loader registered in app/__init__.py.
+    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
         try:
@@ -28,7 +31,10 @@ def require_auth(fn):
 
 
 def require_role(allowed_roles):
-    """Middleware to enforce Role-Based Access Control (RBAC)."""
+    """Middleware to enforce Role-Based Access Control (RBAC).
+    Token revocation (blocklist) is checked automatically by the
+    @jwt.token_in_blocklist_loader registered in app/__init__.py.
+    """
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
