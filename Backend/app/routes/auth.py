@@ -43,40 +43,38 @@ def login():
         return jsonify({"error": "User ID and password are required"}), 400
 
     user = User.query.filter(
-    db.func.lower(User.user_id) == user_id.lower(),
-    User.is_active == True,
-).first()
+        db.func.lower(User.user_id) == user_id.lower(),
+        User.is_active == True,
+    ).first()
 
-# TEMP DEBUG — remove after diagnosis
-if not user:
-    logger.warning(f"LOGIN FAIL: user_id '{user_id}' not found in DB")
-    return jsonify({"error": "Invalid credentials"}), 401
-if not user.check_password(password):
-    logger.warning(f"LOGIN FAIL: password mismatch for user '{user_id}'")
-    return jsonify({"error": "Invalid credentials"}), 401
+    # TEMP DEBUG — remove after HoD login issue is diagnosed
+    if not user:
+        logger.warning(f"LOGIN FAIL: user_id '{user_id}' not found in DB")
+        return jsonify({"error": "Invalid credentials"}), 401
+    if not user.check_password(password):
+        logger.warning(f"LOGIN FAIL: password mismatch for user '{user_id}'")
+        return jsonify({"error": "Invalid credentials"}), 401
 
-if user.role != role:
-    logger.warning(f"LOGIN FAIL: role mismatch — user is '{user.role}', attempted '{role}'")
-    return jsonify({"error": f"This account is not registered as {role}"}), 401
+    if user.role != role:
+        logger.warning(f"LOGIN FAIL: role mismatch — DB has '{user.role}', attempted '{role}'")
+        return jsonify({"error": f"This account is not registered as {role}"}), 401
 
-if role == 'hod':
-    college = sanitize_string(data.get('college', ''), 100)
-    department = sanitize_string(data.get('department', ''), 50)
-    if user.college != college or user.department != department:
-        logger.warning(
-            f"LOGIN FAIL: college/dept mismatch for '{user_id}' — "
-            f"DB has ({user.college}/{user.department}), "
-            f"login attempted ({college}/{department})"
-        )
-        return jsonify({"error": "College or department mismatch"}), 401
+    if role == 'hod':
+        college = sanitize_string(data.get('college', ''), 100)
+        department = sanitize_string(data.get('department', ''), 50)
+        if user.college != college or user.department != department:
+            logger.warning(
+                f"LOGIN FAIL: college/dept mismatch for '{user_id}' — "
+                f"DB has ({user.college}/{user.department}), "
+                f"attempted ({college}/{department})"
+            )
+            return jsonify({"error": "College or department mismatch"}), 401
 
     access_token = create_access_token(identity=user.user_id)
     refresh_token = create_refresh_token(identity=user.user_id)
 
     logger.info(f"User logged in: {user.user_id} (role={user.role})")
 
-    # FIX (CRITICAL): Access token returned in body — frontend stores in memory only.
-    # Refresh token set as httpOnly cookie — invisible to JavaScript, safe from XSS.
     response = make_response(jsonify({
         "success": True,
         "access_token": access_token,
@@ -89,13 +87,8 @@ if role == 'hod':
 @auth_bp.route('/logout', methods=['POST'])
 @jwt_required()
 def logout():
-    """
-    FIX (HIGH): Revoke the current access token and clear the refresh cookie.
-    After logout, both tokens are immediately invalidated.
-    """
     jti = get_jwt()["jti"]
     add_to_blocklist(jti)
-
     response = make_response(jsonify({"success": True, "message": "Logged out successfully"}))
     unset_refresh_cookies(response)
     logger.info(f"User logged out: {get_jwt_identity()}")
@@ -170,7 +163,7 @@ def register():
     return jsonify({
         "success": True,
         "message": "Account created successfully",
-        "userId": user.user_id,
+        "userId": new_user_id,
     }), 201
 
 
@@ -185,7 +178,6 @@ def forgot_password():
     email = sanitize_string(data.get('email', ''), 150)
     mobile = sanitize_string(data.get('mobile', ''), 15)
 
-    # Always return the same message to prevent user enumeration
     _safe_response = jsonify({"success": True, "message": "If the details match, an OTP has been sent."})
 
     user = User.query.filter(
@@ -195,11 +187,7 @@ def forgot_password():
         User.is_active == True,
     ).first()
 
-    if not user:
-        return _safe_response, 200
-
-    if not user.email:
-        logger.warning(f"OTP requested for user {user.user_id} but no email address on file.")
+    if not user or not user.email:
         return _safe_response, 200
 
     otp = str(secrets.randbelow(900000) + 100000)
@@ -207,19 +195,12 @@ def forgot_password():
     user.reset_otp_expiry = datetime.utcnow() + timedelta(minutes=10)
     db.session.commit()
 
-    # FIX (CRITICAL): Actually deliver the OTP via email.
-    # send_otp_email() handles SMTP delivery in production and logs to console in dev.
-    # Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD in Render env vars.
     delivered = send_otp_email(user.email, user.user_id, otp)
     if not delivered:
-        # Roll back OTP if delivery failed so user can retry
         user.reset_otp = None
         user.reset_otp_expiry = None
         db.session.commit()
-        logger.error(f"OTP delivery failed for {user.user_id} — SMTP not configured?")
-        return jsonify({
-            "error": "Could not send OTP. Please contact your administrator."
-        }), 500
+        return jsonify({"error": "Could not send OTP. Please contact your administrator."}), 500
 
     return _safe_response, 200
 
@@ -256,7 +237,6 @@ def reset_password():
     db.session.commit()
 
     logger.info(f"Password reset successful for user {user.user_id}")
-
     return jsonify({"success": True, "message": "Password reset successfully"}), 200
 
 
@@ -273,15 +253,9 @@ def get_current_user():
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
-    """
-    Issue a new access token using the httpOnly refresh cookie.
-    The browser sends the cookie automatically — no token needed in the request body.
-    Returns the new access token in the response body for in-memory storage.
-    """
     user_id = get_jwt_identity()
     user = User.query.filter_by(user_id=user_id, is_active=True).first()
     if not user:
         return jsonify({"error": "User account not found or deactivated", "code": "INVALID_TOKEN"}), 401
-
     new_access_token = create_access_token(identity=user_id)
     return jsonify({"access_token": new_access_token}), 200
