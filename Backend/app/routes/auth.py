@@ -47,27 +47,16 @@ def login():
         User.is_active == True,
     ).first()
 
-    # TEMP DEBUG — remove after HoD login issue is diagnosed
-    if not user:
-        logger.warning(f"LOGIN FAIL: user_id '{user_id}' not found in DB")
-        return jsonify({"error": "Invalid credentials"}), 401
-    if not user.check_password(password):
-        logger.warning(f"LOGIN FAIL: password mismatch for user '{user_id}'")
+    if not user or not user.check_password(password):
         return jsonify({"error": "Invalid credentials"}), 401
 
     if user.role != role:
-        logger.warning(f"LOGIN FAIL: role mismatch — DB has '{user.role}', attempted '{role}'")
         return jsonify({"error": f"This account is not registered as {role}"}), 401
 
     if role == 'hod':
         college = sanitize_string(data.get('college', ''), 100)
         department = sanitize_string(data.get('department', ''), 50)
         if user.college != college or user.department != department:
-            logger.warning(
-                f"LOGIN FAIL: college/dept mismatch for '{user_id}' — "
-                f"DB has ({user.college}/{user.department}), "
-                f"attempted ({college}/{department})"
-            )
             return jsonify({"error": "College or department mismatch"}), 401
 
     access_token = create_access_token(identity=user.user_id)
