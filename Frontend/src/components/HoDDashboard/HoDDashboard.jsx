@@ -45,6 +45,10 @@ const HoDDashboard = () => {
   const [slotEndDate, setSlotEndDate] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+  const [deleteAccountError, setDeleteAccountError] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Load data from backend
   const loadDashboardData = useCallback(async () => {
@@ -146,6 +150,25 @@ const HoDDashboard = () => {
     logoutUser();
     navigate('/', { replace: true });
   };
+
+const handleDeleteAccount = async () => {
+    if (!deleteAccountPassword) {
+      setDeleteAccountError('Please enter your password to confirm');
+      return;
+    }
+    setIsDeletingAccount(true);
+    setDeleteAccountError('');
+    try {
+      await dataService.deleteAccount(deleteAccountPassword);
+      logoutUser();
+      navigate('/', { replace: true });
+    } catch (err) {
+      setDeleteAccountError(err.message || 'Failed to delete account');
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+  
 
   // Add or update faculty via BACKEND
   const addOrUpdateFaculty = async () => {
@@ -637,6 +660,17 @@ console.error('PDF error:', err);
               </span>
               <span>{currentUser.name}</span>
             </div>
+            <button
+              className="logout-btn"
+              style={{ background: '#e74c3c', marginRight: '8px' }}
+              onClick={() => {
+                setDeleteAccountPassword('');
+                setDeleteAccountError('');
+                setShowDeleteAccountModal(true);
+              }}
+            >
+              <span>🗑️ Delete Account</span>
+            </button>
             <button
               className="logout-btn"
               onClick={handleLogout}
@@ -1444,6 +1478,64 @@ console.error('PDF error:', err);
                 >
                   ❌ Cancel
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+{showDeleteAccountModal && (
+          <div className="modal-overlay" style={{ zIndex: 9999 }}>
+            <div className="modal-content" style={{ maxWidth: '420px' }}>
+              <div className="modal-header">
+                <h3>🗑️ Delete Account</h3>
+              </div>
+              <div style={{ padding: '20px' }}>
+                <div style={{
+                  background: '#FFF3CD', border: '1px solid #FFC107',
+                  borderRadius: '8px', padding: '12px 16px',
+                  marginBottom: '16px', fontSize: '13px', color: '#856404',
+                }}>
+                  ⚠️ This will permanently delete your account for <strong>{currentUser.department} — {currentUser.college}</strong>. This cannot be undone. A new HoD can register for this department afterward.
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontWeight: 'bold', marginBottom: '6px', display: 'block' }}>
+                    Confirm your password to proceed:
+                  </label>
+                  <input
+                    type="password"
+                    value={deleteAccountPassword}
+                    onChange={(e) => { setDeleteAccountPassword(e.target.value); setDeleteAccountError(''); }}
+                    placeholder="Enter your current password"
+                    autoComplete="current-password"
+                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                {deleteAccountError && (
+                  <div style={{ color: '#e74c3c', fontSize: '13px', marginBottom: '12px', fontWeight: 'bold' }}>
+                    ⚠️ {deleteAccountError}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={handleDeleteAccount}
+                    disabled={isDeletingAccount}
+                    style={{
+                      flex: 1, padding: '10px', border: 'none', borderRadius: '8px',
+                      fontWeight: 'bold', fontSize: '14px',
+                      background: isDeletingAccount ? '#ccc' : '#e74c3c',
+                      color: '#fff', cursor: isDeletingAccount ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {isDeletingAccount ? 'Deleting...' : '🗑️ Yes, Delete My Account'}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteAccountModal(false)}
+                    disabled={isDeletingAccount}
+                    style={{ flex: 1, padding: '10px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           </div>

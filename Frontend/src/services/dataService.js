@@ -203,6 +203,36 @@ const forgotPassword = async (data) => {
   }
 };
 
+const registerAdmin = async (data) => {
+  try {
+    const r = await authAPI.registerAdmin(data);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) {
+      setBackendStatus(true);
+      throw new Error(e.response.data.error || 'Registration failed');
+    }
+    setBackendStatus(false);
+    throw new Error('Cannot connect to server.');
+  }
+};
+
+const deleteAccount = async (password) => {
+  try {
+    const r = await authAPI.deleteAccount(password);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) {
+      setBackendStatus(true);
+      throw new Error(e.response.data.error || 'Failed to delete account');
+    }
+    setBackendStatus(false);
+    throw new Error('Cannot connect to server.');
+  }
+};
+
 const resetPassword = async (data) => {
   try {
     const r = await authAPI.resetPassword(data);
@@ -480,8 +510,10 @@ const dataService = {
   mergeColleges,
   login,
   register,
+  registerAdmin,
   forgotPassword,
   resetPassword,
+  deleteAccount,
   getAllFaculty,
   createFaculty,
   updateFaculty,

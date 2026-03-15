@@ -248,3 +248,119 @@ def refresh():
         return jsonify({"error": "User account not found or deactivated", "code": "INVALID_TOKEN"}), 401
     new_access_token = create_access_token(identity=user_id)
     return jsonify({"access_token": new_access_token}), 200
+
+@auth_bp.route('/account', methods=['DELETE'])
+@jwt_required()
+def delete_account():
+    """HoD deletes their own account. Requires password confirmation."""
+    user_id = get_jwt_identity()
+    user = User.query.filter_by(user_id=user_id, is_active=True).first()
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    if user.role == 'admin':
+        return jsonify({"error": "Admin accounts cannot be self-deleted"}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    password = data.get('password', '')
+    if not password or not user.check_password(password):
+        return jsonify({"error": "Incorrect password. Please confirm your current password."}), 401
+
+    # Revoke current token
+    jti = get_jwt()["jti"]
+    add_to_blocklist(jti)
+
+    # Hard delete the user record
+    db.session.delete(user)
+    db.session.commit()
+
+    response = make_response(jsonify({
+        "success": True,
+        "message": "Account deleted successfully"
+    }))
+    unset_refresh_cookies(response)
+    logger.info(f"Account self-deleted: {user_id} ({user.college}/{user.department})")
+    return response, 200
+
+@auth_bp.route('/register-admin', methods=['POST'])
+@limiter.limit("3 per minute")
+def register_admin():
+    """
+    Register a management admin account (Principal, Director, or Chairman).
+    Requires a secret registration key set via ADMIN_REG_KEY environment variable.
+    Only one account per role is allowed. Only the developer can register these.
+    """
+    import os
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    # Verify secret registration key
+    provided_key = data.get('reg_key', '')
+    expected_key = os.environ.get('ADMIN_REG_KEY', '')
+    if not expected_key:
+        return jsonify({"error": "Admin registration is not configured. Set ADMIN_REG_KEY in environment."}), 503
+    if provided_key != expected_key:
+        return jsonify({"error": "Invalid registration key"}), 403
+
+    admin_role = sanitize_string(data.get('admin_role', ''), 20).lower()
+    VALID_ROLES = ['principal', 'director', 'chairman']
+    if admin_role not in VALID_ROLES:
+        return jsonify({"error": f"admin_role must be one of: {', '.join(VALID_ROLES)}"}), 400
+
+    name = sanitize_string(data.get('name', ''), 150)
+    email = sanitize_string(data.get('email', ''), 150)
+    mobile = sanitize_string(data.get('mobile', ''), 15)
+    password = data.get('password', '')
+
+    valid, msg = validate_name(name)
+    if not valid:
+        return jsonify({"error": msg}), 400
+
+    valid, msg = validate_email(email)
+    if not valid:
+        return jsonify({"error": msg}), 400
+
+    valid, msg = validate_mobile(mobile)
+    if not valid:
+        return jsonify({"error": msg}), 400
+
+    valid, msg = validate_password(password)
+    if not valid:
+        return jsonify({"error": msg}), 400
+
+    # One-per-role enforcement: check by user_id prefix
+    prefix = admin_role.upper() + '-'
+    existing = User.query.filter(
+        User.user_id.like(f'{prefix}%'),
+        User.is_active == True,
+    ).first()
+    if existing:
+        return jsonify({"error": f"A {admin_role.capitalize()} account already exists. Only one is allowed."}), 409
+
+    new_user_id = f"{admin_role.upper()}-001"
+    user_college = 'Gandhi' if admin_role == 'principal' else None
+
+    user = User(
+        user_id=new_user_id,
+        name=name,
+        role='admin',
+	college=user_college,
+        email=email,
+        mobile=mobile,
+    )
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+    logger.info(f"Management admin registered: {new_user_id} ({name})")
+
+    return jsonify({
+        "success": True,
+        "message": f"{admin_role.capitalize()} account created successfully.",
+        "userId": new_user_id,
+    }), 201

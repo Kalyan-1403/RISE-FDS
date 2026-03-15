@@ -293,6 +293,8 @@ function generateKeywordSummary(comments) {
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user: currentUser, logoutUser } = useAuth();
+  const isPrincipal = currentUser?.adminTitle === 'Principal' || currentUser?.userId?.startsWith('PRINCIPAL-');
+  const scopedCollege = isPrincipal ? 'Gandhi' : null;
 
   // ── State ──────────────────────────────────────────────────
   const [allDepartments, setAllDepartments] = useState({});
@@ -372,11 +374,15 @@ const AdminDashboard = () => {
   const refreshDeptStructure = useCallback(() => {
     const struct = dataService.getDeptStructure();
     const newStruct = JSON.parse(JSON.stringify(struct || {}));
-    setDeptStructureState(newStruct);
+    // Filter to Gandhi only for Principal
+    const filtered = scopedCollege
+      ? Object.fromEntries(Object.entries(newStruct).filter(([k]) => k === scopedCollege))
+      : newStruct;
+    setDeptStructureState(filtered);
     const obj = {};
-    Object.keys(newStruct).forEach((c) => { obj[c] = c; });
+    Object.keys(filtered).forEach((c) => { obj[c] = c; });
     setColleges(obj);
-  }, []);
+  }, [scopedCollege]);
 
   // Fetch faculty stats from backend
   const fetchFacultyStats = useCallback(
@@ -984,8 +990,10 @@ const AdminDashboard = () => {
             <span>RISE</span>
           </div>
           <div className="header-info">
-            <h2>Master Admin Portal</h2>
-            <span className="dept-badge admin">Global Control</span>
+            <h2>{isPrincipal ? 'Principal Portal' : 'Master Admin Portal'}</h2>
+            <span className="dept-badge admin">
+              {isPrincipal ? '🏫 Gandhi College' : 'Global Control'}
+            </span>
           </div>
         </div>
         <div className="header-right">
@@ -1135,31 +1143,35 @@ const AdminDashboard = () => {
                   </button>
                 </>
               )}
-              <button
-                className="sidebar-menu-item"
-                style={{
-                  background: 'rgba(239,68,68,0.1)',
-                  color: '#ef4444',
-                  fontSize: '12px',
-                  marginBottom: '6px',
-                }}
-                onClick={() => handleDeleteResponses('college', selectedCollege, '', null)}
-              >
-                <span className="menu-icon">🗑️</span>{' '}
-                Delete All {selectedCollege} Responses
-              </button>
-              <button
-                className="sidebar-menu-item"
-                style={{
-                  background: 'rgba(239,68,68,0.2)',
-                  color: '#b91c1c',
-                  fontSize: '12px',
-                }}
-                onClick={() => handleDeleteCollege(selectedCollege)}
-              >
-                <span className="menu-icon">💀</span>{' '}
-                Delete {selectedCollege} College
-              </button>
+              {!isPrincipal && (
+                <>
+                  <button
+                    className="sidebar-menu-item"
+                    style={{
+                      background: 'rgba(239,68,68,0.1)',
+                      color: '#ef4444',
+                      fontSize: '12px',
+                      marginBottom: '6px',
+                    }}
+                    onClick={() => handleDeleteResponses('college', selectedCollege, '', null)}
+                  >
+                    <span className="menu-icon">🗑️</span>{' '}
+                    Delete All {selectedCollege} Responses
+                  </button>
+                  <button
+                    className="sidebar-menu-item"
+                    style={{
+                      background: 'rgba(239,68,68,0.2)',
+                      color: '#b91c1c',
+                      fontSize: '12px',
+                    }}
+                    onClick={() => handleDeleteCollege(selectedCollege)}
+                  >
+                    <span className="menu-icon">💀</span>{' '}
+                    Delete {selectedCollege} College
+                  </button>
+                </>
+              )}
             </div>
           )}
         </aside>
@@ -1966,8 +1978,9 @@ const AdminDashboard = () => {
                 <label className="sidebar-label">Select College</label>
                 <select
                   className="sidebar-select"
-                  value={newDeptCollege}
-                  onChange={(e) => setNewDeptCollege(e.target.value)}
+                  value={isPrincipal ? 'Gandhi' : newDeptCollege}
+                  onChange={(e) => !isPrincipal && setNewDeptCollege(e.target.value)}
+                  disabled={isPrincipal}
                 >
                   <option value="">Choose College</option>
                   {Object.keys(colleges).map((c) => (

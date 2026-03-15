@@ -15,15 +15,29 @@ dashboard_bp = Blueprint('dashboard', __name__)
 @dashboard_bp.route('/admin', methods=['GET'])
 @require_role(['admin'])
 def admin_dashboard():
-    """Admin dashboard — aggregated stats across all colleges."""
-    total_faculty = Faculty.query.filter_by(is_active=True).count()
-    total_batches = Batch.query.filter_by(is_active=True).count()
-    total_submissions = FeedbackSubmission.query.count()
+    """Admin dashboard — scoped to college if user is Principal, else global."""
+    user = g.current_user
 
-    # Faculty grouped by college_department
+    # Principal (college='Gandhi') sees only Gandhi data.
+    # Director / Chairman (college=None) see everything.
+    scoped_college = user.college if user.college else None
+
+    if scoped_college:
+        faculty_query = Faculty.query.filter_by(is_active=True, college=scoped_college)
+        batch_query = Batch.query.filter_by(is_active=True, college=scoped_college)
+        submission_count = db.session.query(FeedbackSubmission).join(
+            Batch, FeedbackSubmission.batch_db_id == Batch.id
+        ).filter(Batch.college == scoped_college).count()
+    else:
+        faculty_query = Faculty.query.filter_by(is_active=True)
+        batch_query = Batch.query.filter_by(is_active=True)
+        submission_count = FeedbackSubmission.query.count()
+
+    total_faculty = faculty_query.count()
+    total_batches = batch_query.count()
+
     faculty_by_dept = {}
-    all_faculty = Faculty.query.filter_by(is_active=True).all()
-    for f in all_faculty:
+    for f in faculty_query.all():
         key = f"{f.college}_{f.department}"
         if key not in faculty_by_dept:
             faculty_by_dept[key] = []
@@ -32,10 +46,10 @@ def admin_dashboard():
     return jsonify({
         "totalFaculty": total_faculty,
         "totalBatches": total_batches,
-        "totalSubmissions": total_submissions,
+        "totalSubmissions": submission_count,
         "masterFacultyList": faculty_by_dept,
+        "scopedCollege": scoped_college,
     }), 200
-
 
 @dashboard_bp.route('/hod', methods=['GET'])
 @require_role(['hod'])

@@ -92,11 +92,22 @@ class User(db.Model):
         )
 
     def to_dict(self):
+        # Compute admin title from user_id prefix for management accounts
+        admin_title = None
+        if self.role == 'admin' and self.user_id:
+            if self.user_id.startswith('PRINCIPAL-'):
+                admin_title = 'Principal'
+            elif self.user_id.startswith('DIRECTOR-'):
+                admin_title = 'Director'
+            elif self.user_id.startswith('CHAIRMAN-'):
+                admin_title = 'Chairman'
+
         return {
             'id': self.id,
             'userId': self.user_id,
             'name': self.name,
             'role': self.role,
+            'adminTitle': admin_title,
             'college': self.college or '',
             'department': self.department or '',
             'username': self.name,

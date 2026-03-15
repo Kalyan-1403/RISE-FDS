@@ -30,6 +30,11 @@ const HomePage = () => {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+const [showAdminRegModal, setShowAdminRegModal] = useState(false);
+  const [adminRegForm, setAdminRegForm] = useState({ name: '', email: '', mobile: '', password: '', admin_role: 'principal', reg_key: '' });
+  const [adminRegError, setAdminRegError] = useState('');
+  const [adminRegSuccess, setAdminRegSuccess] = useState('');
+  const [isAdminRegistering, setIsAdminRegistering] = useState(false);
 
   // If already logged in, redirect to dashboard
   if (isAuthenticated && user) {
@@ -74,6 +79,26 @@ const HomePage = () => {
     setUserId('');
     setPassword('');
     setError('');
+  };
+
+const handleAdminRegister = async (e) => {
+    e.preventDefault();
+    setAdminRegError('');
+    setAdminRegSuccess('');
+    if (!adminRegForm.name || !adminRegForm.email || !adminRegForm.mobile || !adminRegForm.password || !adminRegForm.reg_key) {
+      setAdminRegError('All fields are required');
+      return;
+    }
+    setIsAdminRegistering(true);
+    try {
+      const result = await dataService.registerAdmin(adminRegForm);
+      setAdminRegSuccess(`✅ ${result.message} Your User ID is: ${result.userId}`);
+      setAdminRegForm({ name: '', email: '', mobile: '', password: '', admin_role: 'principal', reg_key: '' });
+    } catch (err) {
+      setAdminRegError(err.message || 'Registration failed');
+    } finally {
+      setIsAdminRegistering(false);
+    }
   };
 
   const handleLogin = async (e) => {
@@ -128,8 +153,10 @@ const HomePage = () => {
 
         if (result.user.role === 'admin') {
           navigate('/admin/dashboard', { replace: true });
-        } else {
+        } else if (result.user.role === 'hod') {
           navigate('/hod/dashboard', { replace: true });
+        } else {
+          navigate('/', { replace: true });
         }
       } else {
         setError(
@@ -372,9 +399,7 @@ const HomePage = () => {
             <button
               type="button"
               className="link-btn register-link"
-              onClick={() =>
-                setShowRegisterModal(true)
-              }
+              onClick={() => setShowRegisterModal(true)}
             >
               Register
             </button>
@@ -382,17 +407,78 @@ const HomePage = () => {
             <button
               type="button"
               className="link-btn forgot-link"
-              onClick={() =>
-                setShowForgotModal(true)
-              }
+              onClick={() => setShowForgotModal(true)}
             >
               Forgot Password?
+            </button>
+          </p>
+          <p style={{ marginTop: '6px' }}>
+            <button
+              type="button"
+              onClick={() => { setAdminRegError(''); setAdminRegSuccess(''); setShowAdminRegModal(true); }}
+              style={{ background: 'none', border: 'none', color: '#ccc', fontSize: '11px', cursor: 'pointer', opacity: 0.4 }}
+            >
+              ⚙ Management Registration
             </button>
           </p>
         </div>
       </div>
 
       <DeveloperCredit />
+{showAdminRegModal && (
+        <div className="modal-overlay" onClick={() => setShowAdminRegModal(false)}>
+          <div className="modal-content register-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <button className="modal-close-btn" onClick={() => setShowAdminRegModal(false)}>×</button>
+            <div className="modal-header">
+              <div className="modal-icon">🔐</div>
+              <h2>Management Registration</h2>
+              <p>Principal / Director / Chairman</p>
+            </div>
+            <div className="modal-body">
+              <form onSubmit={handleAdminRegister} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="form-field">
+                  <label>Role</label>
+                  <select value={adminRegForm.admin_role} onChange={(e) => setAdminRegForm(p => ({ ...p, admin_role: e.target.value }))}>
+                    <option value="principal">Principal</option>
+                    <option value="director">Director</option>
+                    <option value="chairman">Chairman</option>
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>Full Name</label>
+                  <input type="text" placeholder="Full name" value={adminRegForm.name} onChange={(e) => setAdminRegForm(p => ({ ...p, name: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label>Email</label>
+                  <input type="email" placeholder="Email address" value={adminRegForm.email} onChange={(e) => setAdminRegForm(p => ({ ...p, email: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label>Mobile</label>
+                  <input type="tel" placeholder="10-digit mobile number" maxLength="10" value={adminRegForm.mobile} onChange={(e) => setAdminRegForm(p => ({ ...p, mobile: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label>Password</label>
+                  <input type="password" placeholder="Create a strong password" value={adminRegForm.password} onChange={(e) => setAdminRegForm(p => ({ ...p, password: e.target.value }))} autoComplete="new-password" />
+                </div>
+                <div className="form-field">
+                  <label>Registration Key</label>
+                  <input type="password" placeholder="Secret registration key" value={adminRegForm.reg_key} onChange={(e) => setAdminRegForm(p => ({ ...p, reg_key: e.target.value }))} autoComplete="off" />
+                </div>
+                {adminRegError && <div className="error-alert"><span>⚠️ {adminRegError}</span></div>}
+                {adminRegSuccess && (
+                  <div style={{ background: '#D4EDDA', border: '1px solid #28A745', borderRadius: '8px', padding: '12px', fontSize: '13px', color: '#155724', fontWeight: 'bold' }}>
+                    {adminRegSuccess}
+                    <p style={{ marginTop: '6px', fontSize: '12px' }}>⚠️ Save the User ID shown above — it is needed to log in.</p>
+                  </div>
+                )}
+                <button type="submit" className="submit-btn" disabled={isAdminRegistering}>
+                  {isAdminRegistering ? 'Registering...' : 'Register Management Account →'}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showRegisterModal && (
         <RegisterModal

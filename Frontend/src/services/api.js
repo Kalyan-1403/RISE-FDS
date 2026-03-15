@@ -125,6 +125,8 @@ export const authAPI = {
   refresh: () => api.post('/auth/refresh'),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   resetPassword: (data) => api.post('/auth/reset-password', data),
+  deleteAccount: (password) => api.delete('/auth/account', { data: { password } }),
+  registerAdmin: (data) => api.post('/auth/register-admin', data),
 };
 
 export const facultyAPI = {
