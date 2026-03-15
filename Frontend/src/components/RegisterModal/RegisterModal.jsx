@@ -8,15 +8,14 @@ const RegisterModal = ({ onClose }) => {
     college: '',
     department: '',
     mobile: '',
-    email: ''
+    email: '',
   });
   const [errors, setErrors] = useState({});
   const [showPasswordPage, setShowPasswordPage] = useState(false);
-  const [generatedUserId, setGeneratedUserId] = useState('');
 
   const departmentsByCollege = {
     Gandhi: ['S&H', 'CSE', 'ECE'],
-    Prakasam: ['S&H', 'CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'MBA', 'MCA', 'M.TECH']
+    Prakasam: ['S&H', 'CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'MBA', 'MCA', 'M.TECH'],
   };
 
   const validateForm = () => {
@@ -25,11 +24,9 @@ const RegisterModal = ({ onClose }) => {
     if (!formData.name.trim()) {
       newErrors.name = 'Name is required';
     }
-
     if (!formData.college) {
       newErrors.college = 'Please select a college';
     }
-
     if (!formData.department) {
       newErrors.department = 'Please select a department';
     }
@@ -52,46 +49,31 @@ const RegisterModal = ({ onClose }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const generateUserId = () => {
-    const deptCode = formData.department;
-    const collegeCode = formData.college === 'Gandhi' ? 'G' : 'P';
-    const randomNum = Math.floor(Math.random() * 1000) + 1;
-    return `${deptCode}-${collegeCode}_${randomNum}`;
-  };
-
   const handleSubmit = (e) => {
     e.preventDefault();
-    
     if (validateForm()) {
-      // Duplicate check will happen on the backend when
-      // CreatePasswordPage calls dataService.register()
-      // The backend returns 409 if HoD already exists for this college+dept
-      const userId = generateUserId();
-      setGeneratedUserId(userId);
+      // FIX: No longer generating a fake user ID here.
+      // The backend is the single source of truth for user ID generation.
+      // CreatePasswordPage will receive the real ID from the API response.
       setShowPasswordPage(true);
     }
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
-    }
+    setFormData((prev) => ({ ...prev, [name]: value }));
 
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: '' }));
+    }
     if (name === 'college') {
-      setFormData(prev => ({ ...prev, department: '' }));
+      setFormData((prev) => ({ ...prev, department: '' }));
     }
   };
 
   if (showPasswordPage) {
     return (
       <CreatePasswordPage
-        userId={generatedUserId}
         userData={formData}
         onClose={onClose}
       />
@@ -100,9 +82,12 @@ const RegisterModal = ({ onClose }) => {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content register-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal-content register-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button className="modal-close-btn" onClick={onClose}>×</button>
-        
+
         <div className="modal-header">
           <div className="modal-icon">🎓</div>
           <h2>New User Registration</h2>
@@ -161,9 +146,10 @@ const RegisterModal = ({ onClose }) => {
                 className={errors.department ? 'error' : ''}
               >
                 <option value="">Choose Department</option>
-                {formData.college && departmentsByCollege[formData.college].map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
+                {formData.college &&
+                  departmentsByCollege[formData.college].map((dept) => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
               </select>
               {errors.department && <span className="error-text">{errors.department}</span>}
             </div>
