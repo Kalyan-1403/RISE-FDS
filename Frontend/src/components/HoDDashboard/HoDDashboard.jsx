@@ -424,7 +424,9 @@ const HoDDashboard = () => {
         });
 
       if (result && result.feedbackLink) {
-        const fullLink = `${window.location.origin}${result.feedbackLink}`;
+        const fullLink = result.feedbackLink.startsWith('http')
+  ? result.feedbackLink
+  : `${window.location.origin}${result.feedbackLink}`;
         try {
           await navigator.clipboard.writeText(
             fullLink
