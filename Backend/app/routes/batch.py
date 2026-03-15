@@ -1,5 +1,5 @@
 import logging
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from datetime import datetime
 from ..extensions import db
 from ..models.batch import Batch, BatchFaculty
@@ -104,12 +104,12 @@ def create_batch():
 
     logger.info(f"Batch created: {batch_id} by {user.user_id} with {added_faculty} faculty")
 
+    frontend_url = current_app.config.get('FRONTEND_URL', '').rstrip('/')
     return jsonify({
         "success": True,
         "batch": batch.to_dict(),
-        "feedbackLink": f"/feedback/{batch.batch_id}",
+        "feedbackLink": f"{frontend_url}/feedback/{batch.batch_id}",
     }), 201
-
 
 @batch_bp.route('/<batch_id>', methods=['GET'])
 def get_batch(batch_id):
