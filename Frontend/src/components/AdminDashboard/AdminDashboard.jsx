@@ -115,175 +115,102 @@ const FACILITY_KEYWORDS = [
 // ─────────────────────────────────────────────────────────────
 // MODULE-LEVEL FUNCTIONS
 // ─────────────────────────────────────────────────────────────
+// ─── Sentence Templates ───────────────────────────────────────────────────────
+const POSITIVE_PARAM_TEMPLATES = [
+  (name, param, avg) => `${name} demonstrated strong ${param.toLowerCase()} with an average rating of ${avg}/10, reflecting consistent student appreciation.`,
+  (name, param, avg) => `Students rated ${name}'s ${param.toLowerCase()} highly at ${avg}/10, indicating clear satisfaction in this area.`,
+  (name, param, avg) => `${name} excelled in ${param.toLowerCase()}, earning a ${avg}/10 from students.`,
+];
+const NEGATIVE_PARAM_TEMPLATES = [
+  (name, param, avg) => `${name} was suggested to improve ${param.toLowerCase()}, which received an average of only ${avg}/10 from students.`,
+  (name, param, avg) => `Students indicated that ${name}'s ${param.toLowerCase()} needs attention, with a rating of ${avg}/10.`,
+  (name, param, avg) => `An improvement in ${param.toLowerCase()} is recommended for ${name}, rated at ${avg}/10 by students.`,
+];
+const POSITIVE_COMMENT_TEMPLATES = [
+  (name, count, theme) => `${count} student${count !== 1 ? 's' : ''} positively mentioned ${name}'s ${theme}.`,
+  (name, count, theme) => `Students expressed satisfaction with ${name}'s ${theme} (mentioned ${count} time${count !== 1 ? 's' : ''}).`,
+];
+const NEGATIVE_COMMENT_TEMPLATES = [
+  (name, count, theme) => `${count} student${count !== 1 ? 's' : ''} suggested ${name} improve their ${theme}.`,
+  (name, count, theme) => `Students recommended improvement in ${name}'s ${theme} (raised ${count} time${count !== 1 ? 's' : ''}).`,
+];
 
-function analyzeSuggestions(comments) {
-  if (!comments || comments.length === 0) {
-    return {
-      rawCount: 0,
-      topics: [],
-      positiveCount: 0,
-      negativeCount: 0,
-      neutralCount: 0,
-      facultyComments: [],
-      generalComments: [],
-      facilityTopics: [],
-    };
+function generateFacultySuggestions(facultyName, parameterStats, comments, totalResponses) {
+  const name = facultyName || 'This faculty';
+  const positives = [];
+  const negatives = [];
+
+  // --- Rating-based insights ---
+  if (parameterStats) {
+    const params = Object.entries(parameterStats)
+      .map(([param, stats]) => ({ param, avg: parseFloat(stats.average) }))
+      .sort((a, b) => b.avg - a.avg);
+
+    // Top 2 params above 8.5
+    params.filter(p => p.avg >= 8.5).slice(0, 2).forEach((p, i) => {
+      const tmpl = POSITIVE_PARAM_TEMPLATES[i % POSITIVE_PARAM_TEMPLATES.length];
+      positives.push(tmpl(name, p.param, p.avg.toFixed(1)));
+    });
+
+    // All params below 7.0
+    params.filter(p => p.avg < 7.0).forEach((p, i) => {
+      const tmpl = NEGATIVE_PARAM_TEMPLATES[i % NEGATIVE_PARAM_TEMPLATES.length];
+      negatives.push(tmpl(name, p.param, p.avg.toFixed(1)));
+    });
   }
 
-  const topicMap = {};
-  let positiveCount = 0;
-  let negativeCount = 0;
-  let neutralCount = 0;
-  const facultyComments = [];
-  const generalComments = [];
-  const facilityTopicMap = {};
-
-  // Parse comments (split by |||)
-  const allParts = [];
-  comments.forEach((comment) => {
-    if (!comment || typeof comment !== 'string') return;
-    const parts = comment.split(' ||| ');
-    parts.forEach((part) => {
-      allParts.push(part.trim());
-    });
-  });
-
-  // Single-pass sentiment analysis — tracks hasPositive/hasNegative
-  // inline to avoid a redundant .some() re-scan after building topicMap.
-  function analyzePartSentiment(text) {
-    if (!text) return;
-    const lower = text.toLowerCase();
-    let hasPositive = false;
-    let hasNegative = false;
+  // --- Comment-based insights ---
+  if (comments && comments.length > 0) {
+    const allText = comments.filter(Boolean).join(' ').toLowerCase();
+    const posThemes = {};
+    const negThemes = {};
 
     POSITIVE_KEYWORDS.forEach(({ keyword, label }) => {
-      if (lower.includes(keyword)) {
-        if (!topicMap[label])
-          topicMap[label] = { text: label, count: 0, sentiment: 'positive' };
-        topicMap[label].count++;
-        hasPositive = true;
-      }
+      const matches = (allText.match(new RegExp(`\\b${keyword}\\b`, 'g')) || []).length;
+      if (matches > 0) posThemes[label] = (posThemes[label] || 0) + matches;
     });
-
     NEGATIVE_KEYWORDS.forEach(({ keyword, label }) => {
-      if (lower.includes(keyword)) {
-        if (!topicMap[label])
-          topicMap[label] = { text: label, count: 0, sentiment: 'negative' };
-        topicMap[label].count++;
-        hasNegative = true;
-      }
+      const matches = (allText.match(new RegExp(`\\b${keyword}\\b`, 'g')) || []).length;
+      if (matches > 0) negThemes[label] = (negThemes[label] || 0) + matches;
     });
 
-    if (!hasPositive && !hasNegative) neutralCount++;
-    else if (hasPositive && !hasNegative) positiveCount++;
-    else if (hasNegative && !hasPositive) negativeCount++;
-    else neutralCount++;
+    Object.entries(posThemes)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3)
+      .forEach(([theme, count], i) => {
+        const tmpl = POSITIVE_COMMENT_TEMPLATES[i % POSITIVE_COMMENT_TEMPLATES.length];
+        positives.push(tmpl(name, count, theme.toLowerCase()));
+      });
+
+    Object.entries(negThemes)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3)
+      .forEach(([theme, count], i) => {
+        const tmpl = NEGATIVE_COMMENT_TEMPLATES[i % NEGATIVE_COMMENT_TEMPLATES.length];
+        negatives.push(tmpl(name, count, theme.toLowerCase()));
+      });
   }
 
-  allParts.forEach((part) => {
-    if (!part) return;
+  if (positives.length === 0 && negatives.length === 0) {
+    return null;
+  }
 
-    if (part.startsWith('[FACULTY:')) {
-      const match = part.match(/\[FACULTY:([^:]+):([^\]]+)\]\s*(.*)/);
-      if (match) {
-        facultyComments.push({
-          code: match[1],
-          name: match[2],
-          comment: match[3],
-        });
-        analyzePartSentiment(match[3]);
-      }
-    } else if (part.startsWith('[GENERAL]')) {
-      const text = part.replace('[GENERAL]', '').trim();
-      generalComments.push(text);
-      const lower = text.toLowerCase();
-      FACILITY_KEYWORDS.forEach(({ keyword, label }) => {
-        if (lower.includes(keyword)) {
-          if (!facilityTopicMap[label])
-            facilityTopicMap[label] = { text: label, count: 0, mentions: [] };
-          facilityTopicMap[label].count++;
-          facilityTopicMap[label].mentions.push(text);
-        }
-      });
-      analyzePartSentiment(text);
-    } else {
-      // Legacy: untagged comments
-      analyzePartSentiment(part);
-    }
-  });
+  if (positives.length === 0) positives.push(`${name} has not received notable positive highlights in current data.`);
+  if (negatives.length === 0) negatives.push(`No specific areas of concern were raised for ${name}.`);
 
-  const topics = Object.values(topicMap).sort((a, b) => b.count - a.count);
-  const facilityTopics = Object.values(facilityTopicMap).sort((a, b) => b.count - a.count);
-
-  const topPositives = topics.filter((t) => t.sentiment === 'positive').slice(0, 5);
-  const topNegatives = topics.filter((t) => t.sentiment === 'negative').slice(0, 8);
-
-  // RED ZONE detection (urgent attention)
-  const redZone = [];
-  const RED_NEGATIVE_TRIGGERS = [
-    'rude', 'partial', 'ragging', 'unsafe', 'harassment',
-    'boring', 'unclear', 'not clear', 'no doubt',
-    'syllabus not', 'absent', 'poor',
-  ];
-  const joinedText = allParts.join(' ').toLowerCase();
-  RED_NEGATIVE_TRIGGERS.forEach((k) => {
-    if (joinedText.includes(k)) {
-      redZone.push({ type: 'teaching', label: `High concern keyword: "${k}"` });
-    }
-  });
-  facilityTopics.forEach((t) => {
-    if (t.count >= 3) {
-      redZone.push({
-        type: 'facility',
-        label: `Frequent facility complaint: ${t.text} (${t.count})`,
-      });
-    }
-  });
-
-  const summary = [
-    `Analyzed ${allParts.length} comment lines.`,
-    topPositives.length
-      ? `Top positives: ${topPositives.map((t) => `${t.text} (${t.count})`).join(', ')}.`
-      : `Top positives: none detected.`,
-    topNegatives.length
-      ? `Top complaints: ${topNegatives.map((t) => `${t.text} (${t.count})`).join(', ')}.`
-      : `Top complaints: none detected.`,
-    redZone.length
-      ? `Red zone items detected: ${redZone.length}.`
-      : `No red zone items detected.`,
-  ].join(' ');
-
-  return {
-    rawCount: allParts.length,
-    topics,
-    positiveCount,
-    negativeCount,
-    neutralCount,
-    facultyComments,
-    generalComments,
-    facilityTopics,
-    topPositives,
-    topNegatives,
-    redZone,
-    summary,
-  };
+  return { positives, negatives, rawCount: comments?.length || 0 };
 }
 
-function generateKeywordSummary(comments) {
-  if (!comments || comments.length === 0) return null;
-  const allText = comments.filter(Boolean).join(' ').toLowerCase();
-  const positiveMatched = POSITIVE_KEYWORDS.filter(({ keyword }) => allText.includes(keyword));
-  const negativeMatched = NEGATIVE_KEYWORDS.filter(({ keyword }) => allText.includes(keyword));
-  if (positiveMatched.length === 0 && negativeMatched.length === 0) return null;
-  const bullet1 =
-    positiveMatched.length > 0
-      ? `Students appreciate ${positiveMatched.slice(0, 3).map((k) => k.label).join(', ')}.`
-      : 'No specific positive aspects were highlighted by students.';
-  const bullet2 =
-    negativeMatched.length > 0
-      ? `Areas needing improvement: ${negativeMatched.slice(0, 3).map((k) => k.label).join(', ')}.`
-      : 'No major concerns or improvement areas raised.';
-  return { bullet1, bullet2 };
+// Kept for dept-level table: returns top3 and bottom3 param entries
+function getParamRankings(parameterStats) {
+  if (!parameterStats) return { top3: [], bottom3: [] };
+  const sorted = Object.entries(parameterStats)
+    .map(([param, stats]) => ({ param, avg: parseFloat(stats.average) }))
+    .sort((a, b) => b.avg - a.avg);
+  return {
+    top3: sorted.slice(0, 3),
+    bottom3: [...sorted].sort((a, b) => a.avg - b.avg).slice(0, 3),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -618,12 +545,24 @@ const AdminDashboard = () => {
     const fList = allDepartments[deptKey] || [];
     const targets = facultyName ? fList.filter((f) => f.name === facultyName) : fList;
 
+    let parameterStats = null;
+    let totalResponses = 0;
+
     for (const fac of targets) {
       try {
         const rawData = await dataService.getFacultyReportData(fac.id);
         if (facultyName) {
           const { facComments, generalComments } = parseCommentEntries(rawData, fac.code);
           comments.push(...facComments, ...generalComments);
+          // Get stats for this specific faculty
+          const stats = facultyStatsCache[fac.id] || await dataService.getFacultyStats(fac.id);
+          if (stats) {
+            // Use latest slot available
+            parameterStats = stats.hasSlot2
+              ? stats.slot2?.parameterStats
+              : stats.slot1?.parameterStats;
+            totalResponses = stats.totalResponses || 0;
+          }
         } else {
           rawData.forEach((entry) => {
             if (entry.comments) comments.push(entry.comments);
@@ -635,14 +574,13 @@ const AdminDashboard = () => {
     }
 
     const uniqueComments = [...new Set(comments)];
-    setSuggestionData(analyzeSuggestions(uniqueComments));
-
-    const targetLabel = facultyName ? facultyName : `${dept} Department`;
-    setLlmSummary(summaryResult);
+    const result = generateFacultySuggestions(facultyName, parameterStats, uniqueComments, totalResponses);
+    setSuggestionData(result);
+    setLlmSummary(result);
     setIsSummarizing(false);
   };
 
-  const openAdminSuggestionsView = async (college, dept) => {
+const openAdminSuggestionsView = async (college, dept) => {
     setIsLoadingAdminSuggestions(true);
     setShowAdminSuggestionsView(true);
     setAdminSuggestionsData(null);
@@ -658,22 +596,49 @@ const AdminDashboard = () => {
         const { facComments, generalComments } = parseCommentEntries(rawData, fac.code);
         allCollegeComments.push(...generalComments);
 
-        const unique = [...new Set(facComments)].filter(Boolean);
-        if (unique.length > 0) {
-          facultySummaries.push({
-            name: fac.name,
-            code: fac.code,
-            summary: generateKeywordSummary(unique),
-            commentCount: unique.length,
-          });
-        }
+        // Fetch stats for param rankings
+        let paramRankings = { top3: [], bottom3: [] };
+        try {
+          const stats = facultyStatsCache[fac.id] || await dataService.getFacultyStats(fac.id);
+          if (stats) {
+            const paramStats = stats.hasSlot2
+              ? stats.slot2?.parameterStats
+              : stats.slot1?.parameterStats;
+            paramRankings = getParamRankings(paramStats);
+          }
+        } catch (e) { /* skip */ }
+
+        facultySummaries.push({
+          name: fac.name,
+          code: fac.code,
+          subject: fac.subject || '',
+          commentCount: facComments.length,
+          paramRankings,
+          suggestions: generateFacultySuggestions(fac.name, 
+            paramRankings.top3.length > 0 ? Object.fromEntries(
+              [...paramRankings.top3, ...paramRankings.bottom3].map(p => [p.param, { average: p.avg }])
+            ) : null,
+            [...new Set(facComments)].filter(Boolean),
+            0
+          ),
+        });
       } catch (e) {
         // Skip failed faculty
       }
     }
 
-    const uniqueCollegeComments = [...new Set(allCollegeComments)].filter(Boolean);
-    const collegeSummary = generateKeywordSummary(uniqueCollegeComments);
+    // College-level general comment summary
+    const allCollegeText = [...new Set(allCollegeComments)].filter(Boolean);
+    let collegeSummary = null;
+    if (allCollegeText.length > 0) {
+      const allText = allCollegeText.join(' ').toLowerCase();
+      const pos = POSITIVE_KEYWORDS.filter(({ keyword }) => allText.includes(keyword)).slice(0, 3);
+      const neg = NEGATIVE_KEYWORDS.filter(({ keyword }) => allText.includes(keyword)).slice(0, 3);
+      collegeSummary = {
+        bullet1: pos.length > 0 ? `Students appreciate ${pos.map(k => k.label).join(', ')}.` : 'No specific positive college feedback found.',
+        bullet2: neg.length > 0 ? `Areas needing college attention: ${neg.map(k => k.label).join(', ')}.` : 'No major college-level concerns raised.',
+      };
+    }
 
     setAdminSuggestionsData({ facultySummaries, collegeSummary, college, dept });
     setIsLoadingAdminSuggestions(false);
@@ -887,9 +852,31 @@ const AdminDashboard = () => {
           cached?.slot2?.overallAverage != null
             ? parseFloat(cached.slot2.overallAverage)
             : null;
-        const currentRating = s2 ?? s1 ?? 0;
+        // Apply slot filter based on selectedSemester
+        let currentRating = 0;
+        if (selectedSemester === 'current') {
+          currentRating = s2 ?? s1 ?? 0;
+        } else if (selectedSemester === 'previous') {
+          currentRating = s1 ?? 0;
+        } else {
+          // both: average of available slots
+          if (s1 !== null && s2 !== null) currentRating = (s1 + s2) / 2;
+          else currentRating = s2 ?? s1 ?? 0;
+        }
         const previousRating = s1 ?? 0;
         const change = s1 !== null && s2 !== null ? (s2 - s1).toFixed(2) : null;
+
+        // Get lowest-rated parameter for needs improvement display
+        let lowestParam = null;
+        const slotKey = selectedSemester === 'previous' ? 'slot1' : 'slot2';
+        const paramStats = cached?.[slotKey]?.parameterStats || cached?.slot1?.parameterStats;
+        if (paramStats) {
+          const sorted = Object.entries(paramStats)
+            .map(([param, stats]) => ({ param, avg: parseFloat(stats.average) }))
+            .sort((a, b) => a.avg - b.avg);
+          if (sorted.length > 0) lowestParam = sorted[0];
+        }
+
         return {
           ...faculty,
           slot1Avg: s1,
@@ -900,8 +887,9 @@ const AdminDashboard = () => {
           improvement: (currentRating - previousRating).toFixed(2),
           totalResponses: cached?.totalResponses || 0,
           hasData: cached ? cached.totalResponses > 0 : false,
+          lowestParam,
         };
-      });
+    });
 
       const facultyWithData = rows.filter((r) => r.hasData);
 
@@ -919,12 +907,16 @@ const AdminDashboard = () => {
       const avgCurrentRating = (
         facultyWithData.reduce((sum, f) => sum + f.currentRating, 0) / facultyWithData.length
       ).toFixed(2);
+      // Top performers: avg ABOVE 9.0, top 3
       const topPerformers = [...facultyWithData]
+        .filter(f => f.currentRating > 9.0)
         .sort((a, b) => b.currentRating - a.currentRating)
         .slice(0, 3);
+
+      // Needs improvement: avg BELOW 8.0, all of them
       const needsImprovement = [...facultyWithData]
-        .sort((a, b) => a.currentRating - b.currentRating)
-        .slice(0, 3);
+        .filter(f => f.currentRating < 8.0)
+        .sort((a, b) => a.currentRating - b.currentRating);
 
       setAiStatsData({
         department: aiStatsDept,
@@ -1896,70 +1888,65 @@ const AdminDashboard = () => {
                       </div>
 
                       <div className="performers-section">
-                        <h3>🏆 Top Performers</h3>
-                        <div className="performers-grid">
-                          {aiStatsData.topPerformers.map((faculty, idx) => (
-                            <div key={faculty.id} className="performer-card top">
-                              <div className="performer-rank">{idx + 1}</div>
-                              <div className="performer-info">
-                                <h4>{faculty.name}</h4>
-                                <p>
-                                  {faculty.subject} ({faculty.code})
-                                </p>
+                        <h3>🏆 Top Performers <span style={{ fontSize: '13px', fontWeight: '600', color: '#64748b' }}>(Average above 9.0)</span></h3>
+                        {aiStatsData.topPerformers.length === 0 ? (
+                          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '10px', color: '#94a3b8', textAlign: 'center', fontSize: '14px' }}>
+                            No faculty has an average above 9.0 for the selected slot.
+                          </div>
+                        ) : (
+                          <div className="performers-grid">
+                            {aiStatsData.topPerformers.map((faculty, idx) => (
+                              <div key={faculty.id} className="performer-card top">
+                                <div className="performer-rank">{idx + 1}</div>
+                                <div className="performer-info">
+                                  <h4>{faculty.name}</h4>
+                                  <p>{faculty.subject} ({faculty.code})</p>
+                                </div>
+                                <div className="performer-stats">
+                                  <span className="performer-rating" style={{ color: getRatingColor(faculty.currentRating) }}>
+                                    ⭐ {faculty.currentRating.toFixed(2)}/10
+                                  </span>
+                                </div>
+                                <div className="performer-meter">
+                                  <div className="meter-fill" style={{ width: `${(faculty.currentRating / 10) * 100}%`, backgroundColor: getRatingColor(faculty.currentRating) }} />
+                                </div>
                               </div>
-                              <div className="performer-stats">
-                                <span
-                                  className="performer-rating"
-                                  style={{ color: getRatingColor(faculty.currentRating) }}
-                                >
-                                  ⭐ {faculty.currentRating}/10
-                                </span>
-                              </div>
-                              <div className="performer-meter">
-                                <div
-                                  className="meter-fill"
-                                  style={{
-                                    width: `${(faculty.currentRating / 10) * 100}%`,
-                                    backgroundColor: getRatingColor(faculty.currentRating),
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <div className="performers-section">
-                        <h3>📈 Needs Improvement</h3>
-                        <div className="performers-grid">
-                          {aiStatsData.needsImprovement.map((faculty) => (
-                            <div key={faculty.id} className="performer-card needs-improvement">
-                              <div className="performer-info">
-                                <h4>{faculty.name}</h4>
-                                <p>
-                                  {faculty.subject} ({faculty.code})
-                                </p>
+                        <h3>📈 Needs Improvement <span style={{ fontSize: '13px', fontWeight: '600', color: '#64748b' }}>(Average below 8.0)</span></h3>
+                        {aiStatsData.needsImprovement.length === 0 ? (
+                          <div style={{ padding: '16px', background: '#f0fdf4', borderRadius: '10px', color: '#15803d', textAlign: 'center', fontSize: '14px', fontWeight: '600' }}>
+                            ✅ All faculty are performing at 8.0 or above for the selected slot.
+                          </div>
+                        ) : (
+                          <div className="performers-grid">
+                            {aiStatsData.needsImprovement.map((faculty) => (
+                              <div key={faculty.id} className="performer-card needs-improvement">
+                                <div className="performer-info">
+                                  <h4>{faculty.name}</h4>
+                                  <p>{faculty.subject} ({faculty.code})</p>
+                                  {faculty.lowestParam && (
+                                    <div style={{ marginTop: '6px', padding: '5px 10px', background: '#fee2e2', borderRadius: '6px', fontSize: '11px', fontWeight: '700', color: '#b91c1c' }}>
+                                      📌 Focus: {faculty.lowestParam.param} ({faculty.lowestParam.avg.toFixed(1)}/10)
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="performer-stats">
+                                  <span className="performer-rating" style={{ color: getRatingColor(faculty.currentRating) }}>
+                                    ⭐ {faculty.currentRating.toFixed(2)}/10
+                                  </span>
+                                </div>
+                                <div className="performer-meter">
+                                  <div className="meter-fill" style={{ width: `${(faculty.currentRating / 10) * 100}%`, backgroundColor: getRatingColor(faculty.currentRating) }} />
+                                </div>
                               </div>
-                              <div className="performer-stats">
-                                <span
-                                  className="performer-rating"
-                                  style={{ color: getRatingColor(faculty.currentRating) }}
-                                >
-                                  ⭐ {faculty.currentRating}/10
-                                </span>
-                              </div>
-                              <div className="performer-meter">
-                                <div
-                                  className="meter-fill"
-                                  style={{
-                                    width: `${(faculty.currentRating / 10) * 100}%`,
-                                    backgroundColor: getRatingColor(faculty.currentRating),
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </>
                   )}
@@ -2210,306 +2197,48 @@ const AdminDashboard = () => {
               {/* Show spinner until suggestionData is ready (fixes race condition) */}
               {!suggestionData ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                  <div
-                    className="spinner-small"
-                    style={{
-                      margin: '0 auto 16px auto',
-                      width: '36px',
-                      height: '36px',
-                      borderTopColor: '#7c3aed',
-                      borderWidth: '4px',
-                    }}
-                  />
-                  <h3 style={{ color: '#64748b' }}>Loading suggestions...</h3>
-                  <p style={{ color: '#94a3b8', fontSize: '14px' }}>Fetching student comments.</p>
+                  <div className="spinner-small" style={{ margin: '0 auto 16px auto', width: '36px', height: '36px', borderTopColor: '#7c3aed', borderWidth: '4px' }} />
+                  <h3 style={{ color: '#64748b' }}>Analyzing feedback...</h3>
+                  <p style={{ color: '#94a3b8', fontSize: '14px' }}>Reading ratings and comments.</p>
+                </div>
+              ) : !suggestionData ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <div style={{ fontSize: '60px', marginBottom: '16px' }}>💬</div>
+                  <h3 style={{ color: '#64748b' }}>No Feedback Data Available</h3>
+                  <p style={{ color: '#94a3b8' }}>No ratings or comments submitted yet for this faculty.</p>
                 </div>
               ) : (
                 <>
-                  <div style={{ marginBottom: '20px' }}>
-                    <h3 style={{ margin: '0 0 4px 0' }}>
-                      Scope:{' '}
-                      {suggestionTarget.faculty
-                        ? suggestionTarget.faculty
-                        : suggestionTarget.dept
-                        ? `${suggestionTarget.dept} Department`
-                        : `${suggestionTarget.college} College`}
-                    </h3>
-                    <p style={{ color: '#64748b' }}>
-                      Analyzed <strong>{suggestionData.rawCount}</strong> student comments.
-                    </p>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '17px', fontWeight: '800', color: '#1e293b' }}>
+                    {suggestionTarget.faculty || `${suggestionTarget.dept} Department`}
+                  </h3>
+                  <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
+                    Based on student ratings and {suggestionData.rawCount} comment{suggestionData.rawCount !== 1 ? 's' : ''}
+                  </p>
+
+                  {/* Positives */}
+                  <div style={{ marginBottom: '20px', padding: '18px 20px', borderRadius: '14px', background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '2px solid #22c55e' }}>
+                    <h4 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '800', color: '#14532d' }}>
+                      ✅ Positives
+                    </h4>
+                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#1e293b', fontSize: '14px', lineHeight: '2' }}>
+                      {suggestionData.positives.map((p, i) => (
+                        <li key={i} style={{ marginBottom: '6px' }}>{p}</li>
+                      ))}
+                    </ul>
                   </div>
 
-                  {/* Summary */}
-                  {suggestionData.summary && (
-                    <div
-                      style={{
-                        marginBottom: '16px',
-                        padding: '12px 14px',
-                        borderRadius: '12px',
-                        background: '#f1f5f9',
-                        border: '2px solid #cbd5e1',
-                        fontWeight: '700',
-                        color: '#334155',
-                        fontSize: '13px',
-                      }}
-                    >
-                      🧾 Summary: {suggestionData.summary}
-                    </div>
-                  )}
-
-                  {/* Red Zone */}
-                  {suggestionData.redZone && suggestionData.redZone.length > 0 && (
-                    <div
-                      style={{
-                        marginBottom: '20px',
-                        padding: '14px',
-                        borderRadius: '14px',
-                        background: 'linear-gradient(135deg, #fee2e2, #fecaca)',
-                        border: '2px solid #ef4444',
-                      }}
-                    >
-                      <h4
-                        style={{
-                          margin: '0 0 10px 0',
-                          fontSize: '15px',
-                          fontWeight: '900',
-                          color: '#991b1b',
-                        }}
-                      >
-                        🚨 Red Zone (Needs Immediate Attention)
-                      </h4>
-                      <ul
-                        style={{
-                          margin: 0,
-                          paddingLeft: '18px',
-                          color: '#7f1d1d',
-                          fontWeight: '700',
-                          fontSize: '13px',
-                        }}
-                      >
-                        {suggestionData.redZone.map((rz, i) => (
-                          <li key={i}>{rz.label}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {suggestionData.rawCount === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                      <div style={{ fontSize: '60px', marginBottom: '16px' }}>💬</div>
-                      <h3 style={{ color: '#64748b' }}>No Comments Available</h3>
-                      <p style={{ color: '#94a3b8' }}>
-                        Students haven't submitted any comments yet.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Summary Stats */}
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '1fr 1fr 1fr',
-                          gap: '12px',
-                          marginBottom: '24px',
-                        }}
-                      >
-                        <div
-                          style={{
-                            textAlign: 'center',
-                            padding: '16px',
-                            background: '#ecfdf5',
-                            borderRadius: '12px',
-                            border: '2px solid #10b981',
-                          }}
-                        >
-                          <div style={{ fontSize: '28px', fontWeight: '900', color: '#10b981' }}>
-                            {suggestionData.positiveCount}
-                          </div>
-                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#065f46' }}>
-                            👍 Positive
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            textAlign: 'center',
-                            padding: '16px',
-                            background: '#fef2f2',
-                            borderRadius: '12px',
-                            border: '2px solid #ef4444',
-                          }}
-                        >
-                          <div style={{ fontSize: '28px', fontWeight: '900', color: '#ef4444' }}>
-                            {suggestionData.negativeCount}
-                          </div>
-                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#991b1b' }}>
-                            ⚠️ Concerns
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            textAlign: 'center',
-                            padding: '16px',
-                            background: '#f3f4f6',
-                            borderRadius: '12px',
-                            border: '2px solid #9ca3af',
-                          }}
-                        >
-                          <div style={{ fontSize: '28px', fontWeight: '900', color: '#6b7280' }}>
-                            {suggestionData.neutralCount}
-                          </div>
-                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#374151' }}>
-                            💬 Neutral
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Summarized Suggestions */}
-                      {(() => {
-                        const allTexts = [
-                          ...suggestionData.facultyComments.map((fc) => fc.comment),
-                          ...suggestionData.generalComments,
-                        ];
-                        const kwSummary = generateKeywordSummary(allTexts);
-                        if (!kwSummary) return null;
-                        return (
-                          <div
-                            style={{
-                              marginBottom: '20px',
-                              padding: '18px 20px',
-                              borderRadius: '14px',
-                              background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)',
-                              border: '2px solid #22c55e',
-                            }}
-                          >
-                            <h4
-                              style={{
-                                margin: '0 0 14px 0',
-                                fontSize: '15px',
-                                fontWeight: '800',
-                                color: '#14532d',
-                              }}
-                            >
-                              📝 Summarized Student Feedback
-                            </h4>
-                            <ul
-                              style={{
-                                margin: 0,
-                                paddingLeft: '20px',
-                                color: '#1e293b',
-                                fontSize: '14px',
-                                lineHeight: '1.9',
-                              }}
-                            >
-                              <li style={{ marginBottom: '10px' }}>
-                                <strong style={{ color: '#16a34a' }}>✅ Strengths: </strong>
-                                {kwSummary.bullet1}
-                              </li>
-                              <li>
-                                <strong style={{ color: '#dc2626' }}>⚠️ Areas to Improve: </strong>
-                                {kwSummary.bullet2}
-                              </li>
-                            </ul>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Comment Count Badges */}
-                      {(suggestionData.facultyComments.length > 0 ||
-                        suggestionData.generalComments.length > 0) && (
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: '10px',
-                            flexWrap: 'wrap',
-                            marginBottom: '20px',
-                          }}
-                        >
-                          {suggestionData.facultyComments.length > 0 && (
-                            <span
-                              style={{
-                                padding: '8px 16px',
-                                borderRadius: '20px',
-                                background: '#e0f2fe',
-                                color: '#0369a1',
-                                fontWeight: '700',
-                                fontSize: '13px',
-                                border: '2px solid #0ea5e9',
-                              }}
-                            >
-                              🧑‍🏫 {suggestionData.facultyComments.length} Faculty Suggestions
-                            </span>
-                          )}
-                          {suggestionData.generalComments.length > 0 && (
-                            <span
-                              style={{
-                                padding: '8px 16px',
-                                borderRadius: '20px',
-                                background: '#fef9c3',
-                                color: '#854d0e',
-                                fontWeight: '700',
-                                fontSize: '13px',
-                                border: '2px solid #eab308',
-                              }}
-                            >
-                              🏫 {suggestionData.generalComments.length} College Suggestions
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Teaching Quality Topics */}
-                      <div>
-                        <h4
-                          style={{
-                            margin: '0 0 12px 0',
-                            fontSize: '16px',
-                            fontWeight: '800',
-                            color: '#1e293b',
-                          }}
-                        >
-                          📊 Teaching Quality Topics
-                        </h4>
-                        {suggestionData.topics.length === 0 ? (
-                          <p style={{ color: '#94a3b8', fontStyle: 'italic' }}>
-                            No specific teaching topics could be extracted.
-                          </p>
-                        ) : (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                            {suggestionData.topics.map((t, i) => (
-                              <span
-                                key={i}
-                                style={{
-                                  padding: '8px 16px',
-                                  borderRadius: '20px',
-                                  fontWeight: '600',
-                                  fontSize: '13px',
-                                  background:
-                                    t.sentiment === 'positive'
-                                      ? '#d1fae5'
-                                      : t.sentiment === 'negative'
-                                      ? '#fee2e2'
-                                      : '#f3f4f6',
-                                  color:
-                                    t.sentiment === 'positive'
-                                      ? '#065f46'
-                                      : t.sentiment === 'negative'
-                                      ? '#991b1b'
-                                      : '#374151',
-                                }}
-                              >
-                                {t.sentiment === 'positive'
-                                  ? '👍 '
-                                  : t.sentiment === 'negative'
-                                  ? '⚠️ '
-                                  : '💬 '}
-                                {t.text} ({t.count})
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  {/* Negatives */}
+                  <div style={{ padding: '18px 20px', borderRadius: '14px', background: 'linear-gradient(135deg, #fef2f2, #fee2e2)', border: '2px solid #ef4444' }}>
+                    <h4 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '800', color: '#7f1d1d' }}>
+                      ⚠️ Areas to Improve
+                    </h4>
+                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#1e293b', fontSize: '14px', lineHeight: '2' }}>
+                      {suggestionData.negatives.map((n, i) => (
+                        <li key={i} style={{ marginBottom: '6px' }}>{n}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </>
               )}
             </div>
@@ -2595,106 +2324,59 @@ const AdminDashboard = () => {
                   </h3>
 
                   {adminSuggestionsData.facultySummaries.length === 0 ? (
-                    <div
-                      style={{
-                        padding: '24px',
-                        borderRadius: '14px',
-                        background: '#f8fafc',
-                        border: '2px dashed #cbd5e1',
-                        textAlign: 'center',
-                        color: '#94a3b8',
-                        marginBottom: '28px',
-                      }}
-                    >
+                    <div style={{ padding: '24px', borderRadius: '14px', background: '#f8fafc', border: '2px dashed #cbd5e1', textAlign: 'center', color: '#94a3b8', marginBottom: '28px' }}>
                       <div style={{ fontSize: '40px', marginBottom: '8px' }}>💬</div>
-                      <p style={{ fontWeight: '700' }}>
-                        No faculty-specific suggestions submitted yet.
-                      </p>
+                      <p style={{ fontWeight: '700' }}>No faculty data available yet.</p>
                     </div>
                   ) : (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '14px',
-                        marginBottom: '32px',
-                      }}
-                    >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
                       {adminSuggestionsData.facultySummaries.map((fac, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            padding: '16px 20px',
-                            borderRadius: '14px',
-                            background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)',
-                            border: '2px solid #e2e8f0',
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              marginBottom: '12px',
-                            }}
-                          >
-                            <span
-                              style={{
-                                padding: '4px 12px',
-                                borderRadius: '8px',
-                                background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-                                color: 'white',
-                                fontWeight: '800',
-                                fontSize: '12px',
-                              }}
-                            >
-                              {fac.code}
-                            </span>
-                            <strong style={{ fontSize: '15px', color: '#1e293b' }}>
-                              {fac.name}
-                            </strong>
-                            <span
-                              style={{
-                                marginLeft: 'auto',
-                                fontSize: '12px',
-                                color: '#64748b',
-                                fontWeight: '600',
-                              }}
-                            >
-                              {fac.commentCount} suggestion{fac.commentCount !== 1 ? 's' : ''}
-                            </span>
+                        <div key={i} style={{ borderRadius: '14px', border: '2px solid #e2e8f0', overflow: 'hidden' }}>
+                          {/* Faculty header */}
+                          <div style={{ padding: '12px 16px', background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '6px', color: 'white', fontWeight: '800', fontSize: '13px' }}>{fac.code}</span>
+                            <strong style={{ color: 'white', fontSize: '15px' }}>{fac.name}</strong>
+                            {fac.subject && <span style={{ color: '#ddd8fe', fontSize: '13px', marginLeft: '4px' }}>— {fac.subject}</span>}
                           </div>
 
-                          {fac.summary ? (
-                            <ul
-                              style={{
-                                margin: 0,
-                                paddingLeft: '20px',
-                                fontSize: '13.5px',
-                                color: '#334155',
-                                lineHeight: '1.9',
-                              }}
-                            >
-                              <li style={{ marginBottom: '6px' }}>
-                                <strong style={{ color: '#16a34a' }}>✅ Strengths: </strong>
-                                {fac.summary.bullet1}
-                              </li>
-                              <li>
-                                <strong style={{ color: '#dc2626' }}>⚠️ Improve: </strong>
-                                {fac.summary.bullet2}
-                              </li>
-                            </ul>
-                          ) : (
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: '13px',
-                                color: '#94a3b8',
-                                fontStyle: 'italic',
-                              }}
-                            >
-                              No specific keyword patterns found in suggestions.
-                            </p>
+                          {/* Two-column param table */}
+                          {(fac.paramRankings.top3.length > 0 || fac.paramRankings.bottom3.length > 0) && (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: '2px solid #e2e8f0' }}>
+                              {/* Positives column */}
+                              <div style={{ padding: '14px 16px', borderRight: '2px solid #e2e8f0', background: '#f0fdf4' }}>
+                                <div style={{ fontSize: '12px', fontWeight: '800', color: '#15803d', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>✅ Top 3 Strengths</div>
+                                {fac.paramRankings.top3.map((p, idx) => (
+                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', marginBottom: '6px', background: 'white', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', flex: 1 }}>{p.param}</span>
+                                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#15803d', marginLeft: '8px', whiteSpace: 'nowrap' }}>{p.avg.toFixed(1)}/10</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {/* Negatives column */}
+                              <div style={{ padding: '14px 16px', background: '#fef2f2' }}>
+                                <div style={{ fontSize: '12px', fontWeight: '800', color: '#b91c1c', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>⚠️ Top 3 Needs Improvement</div>
+                                {fac.paramRankings.bottom3.map((p, idx) => (
+                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', marginBottom: '6px', background: 'white', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', flex: 1 }}>{p.param}</span>
+                                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#b91c1c', marginLeft: '8px', whiteSpace: 'nowrap' }}>{p.avg.toFixed(1)}/10</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Sentence summary */}
+                          {fac.suggestions && (
+                            <div style={{ padding: '14px 16px', background: '#f8fafc' }}>
+                              <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: '#334155', lineHeight: '1.9' }}>
+                                {fac.suggestions.positives.slice(0, 1).map((p, i) => (
+                                  <li key={`p${i}`} style={{ marginBottom: '4px', color: '#15803d' }}>{p}</li>
+                                ))}
+                                {fac.suggestions.negatives.slice(0, 1).map((n, i) => (
+                                  <li key={`n${i}`} style={{ color: '#b91c1c' }}>{n}</li>
+                                ))}
+                              </ul>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -2702,14 +2384,7 @@ const AdminDashboard = () => {
                   )}
 
                   {/* Divider */}
-                  <div
-                    style={{
-                      height: '3px',
-                      background: 'linear-gradient(90deg, #f59e0b, #eab308)',
-                      borderRadius: '4px',
-                      marginBottom: '28px',
-                    }}
-                  />
+                  <div style={{ height: '3px', background: 'linear-gradient(90deg, #f59e0b, #eab308)', borderRadius: '4px', marginBottom: '28px'}}/>
 
                   {/* College-level Summaries */}
                   <h3
