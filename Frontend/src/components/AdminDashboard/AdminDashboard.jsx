@@ -459,19 +459,20 @@ const AdminDashboard = () => {
     [fetchFacultyStats]
   );
 
-  const getTopParameters = (parameterStats, count = 3) => {
+  const getTopParameters = (parameterStats) => {
     if (!parameterStats) return [];
     return Object.entries(parameterStats)
+      .filter(([, stats]) => parseFloat(stats.average) > 9)
       .sort(([, a], [, b]) => parseFloat(b.average) - parseFloat(a.average))
-      .slice(0, count)
+      .slice(0, 2)
       .map(([param, stats]) => ({ parameter: param, ...stats }));
   };
 
-  const getBottomParameters = (parameterStats, count = 3) => {
+  const getBottomParameters = (parameterStats) => {
     if (!parameterStats) return [];
     return Object.entries(parameterStats)
+      .filter(([, stats]) => parseFloat(stats.average) < 8)
       .sort(([, a], [, b]) => parseFloat(a.average) - parseFloat(b.average))
-      .slice(0, count)
       .map(([param, stats]) => ({ parameter: param, ...stats }));
   };
 
@@ -1569,7 +1570,12 @@ const AdminDashboard = () => {
                         </h4>
                         <div className="stats-overview">
                           <div className="stat-box">
-                            <span className="stat-number">{slotData.responseCount}</span>
+                            <span className="stat-number">
+                              {slotData.responseCount}
+                              {selectedFaculty?.batch?.totalStudents > 0
+                                ? `/${selectedFaculty.batch.totalStudents}`
+                                : ''}
+                            </span>
                             <span className="stat-text">Responses</span>
                           </div>
                           <div className="stat-box highlight">
@@ -1595,7 +1601,7 @@ const AdminDashboard = () => {
                                     style={{ width: `${percentage}%` }}
                                   />
                                 </div>
-                                <span className="rating-count">{count}</span>
+                                <span className="rating-count">{percentage.toFixed(1)}%</span>
                               </div>
                             );
                           })}

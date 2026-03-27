@@ -379,46 +379,17 @@ const StudentFeedback = () => {
                                     }
                                     required
                                   >
-                                    <option value="">
-                                      Rate
-                                    </option>
-                                    <option value="1">
-                                      1 - Very
-                                      Poor
-                                    </option>
-                                    <option value="2">
-                                      2 - Poor
-                                    </option>
-                                    <option value="3">
-                                      3 - Below
-                                      Average
-                                    </option>
-                                    <option value="4">
-                                      4 - Fair
-                                    </option>
-                                    <option value="5">
-                                      5 -
-                                      Average
-                                    </option>
-                                    <option value="6">
-                                      6 - Above
-                                      Average
-                                    </option>
-                                    <option value="7">
-                                      7 - Good
-                                    </option>
-                                    <option value="8">
-                                      8 - Very
-                                      Good
-                                    </option>
-                                    <option value="9">
-                                      9 -
-                                      Excellent
-                                    </option>
-                                    <option value="10">
-                                      10 -
-                                      Outstanding
-                                    </option>
+                                    <option value="">Rate</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="7">7</option>
+                                    <option value="8">8</option>
+                                    <option value="9">9</option>
+                                    <option value="10">10</option>
                                   </select>
                                 </td>
                               )
@@ -450,7 +421,7 @@ const StudentFeedback = () => {
                       color: '#0c4a6e',
                     }}
                   >
-                    💬 Comments for Each Faculty
+                    💬 Comments on Each Faculty
                     (Optional)
                   </h3>
                   {batchData.faculty.map(
@@ -487,7 +458,7 @@ const StudentFeedback = () => {
                               e.target.value
                             )
                           }
-                          placeholder={`Comments about ${fac.name}'s teaching...`}
+                          placeholder={`Comments on ${fac.name}'s teaching...`}
                           style={{
                             width: '100%',
                             minHeight: '50px',

@@ -49,6 +49,13 @@ def create_batch():
     slot_start = data.get('slotStartDate')
     slot_end = data.get('slotEndDate')
     slot_label = sanitize_string(data.get('slotLabel', f'Slot {slot}'), 100)
+    total_students = data.get('totalStudents', 0)
+    try:
+        total_students = int(total_students)
+        if total_students < 0:
+            total_students = 0
+    except (ValueError, TypeError):
+        total_students = 0
 
     # Validate slot is an integer
     try:
@@ -70,6 +77,29 @@ def create_batch():
     except ValueError:
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
+    # Slot locking: prevent duplicate batches for same section/slot/dates
+    from sqlalchemy import and_, or_
+    overlapping = Batch.query.filter(
+        Batch.college == college,
+        Batch.department == department,
+        Batch.branch == branch,
+        Batch.year == year,
+        Batch.semester == semester,
+        Batch.section == section,
+        Batch.slot == slot,
+        Batch.is_active == True,
+    ).first()
+
+    if overlapping:
+        return jsonify({
+            "error": (
+                f"A Slot {slot} batch already exists for this section "
+                f"({college} / {department} / {branch} / Year {year} / "
+                f"Sem {semester} / Sec {section}). "
+                f"Only the developer can override this."
+            )
+        }), 409
+
     batch = Batch(
         batch_id=batch_id,
         college=college,
@@ -82,6 +112,7 @@ def create_batch():
         slot_start_date=start_date,
         slot_end_date=end_date,
         slot_label=slot_label,
+        total_students=total_students,
         created_by=user.id,
     )
     db.session.add(batch)

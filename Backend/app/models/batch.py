@@ -56,6 +56,11 @@ class Batch(db.Model):
         db.String(100),
         nullable=True,
     )
+    total_students = db.Column(
+        db.Integer,
+        nullable=True,
+        default=0,
+    )
     created_by = db.Column(
         db.Integer,
         db.ForeignKey('users.id'),
@@ -114,6 +119,7 @@ class Batch(db.Model):
                 else None
             ),
             'slotLabel': self.slot_label,
+            'totalStudents': self.total_students or 0,
             'created': (
                 self.created_at.strftime('%m/%d/%Y')
                 if self.created_at

@@ -44,6 +44,7 @@ const HoDDashboard = () => {
   const [slotStartDate, setSlotStartDate] = useState('');
   const [slotEndDate, setSlotEndDate] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
+  const [totalStudents, setTotalStudents] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
@@ -419,6 +420,10 @@ const handleDeleteAccount = async () => {
       );
       return;
     }
+    if (!totalStudents || parseInt(totalStudents) < 1) {
+      alert('⚠️ Please enter the total number of students for this section');
+      return;
+    }
 
     const targetYear = isSH ? 'I' : selectedYear;
     const targetBranch = isSH
@@ -444,6 +449,7 @@ const handleDeleteAccount = async () => {
               ? 'Previous Feedback Cycle'
               : 'Latest Feedback Cycle',
           faculty_ids: selectedFacultyIds,
+	  totalStudents: parseInt(totalStudents) || 0,
         });
 
       if (result && result.feedbackLink) {
@@ -474,6 +480,7 @@ const handleDeleteAccount = async () => {
         setSlotNumber(1);
         setSlotStartDate('');
         setSlotEndDate('');
+	setTotalStudents('');
 
         // Refresh batches
         await loadDashboardData();
@@ -1354,6 +1361,20 @@ console.error('PDF error:', err);
                         required
                       />
                     </div>
+                  </div>
+	<div style={{ marginTop: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '6px', color: '#2d3436' }}>
+                      👥 Total Students in this Section
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="500"
+                      value={totalStudents}
+                      onChange={(e) => setTotalStudents(e.target.value)}
+                      placeholder="Enter total student strength (e.g. 65)"
+                      style={{ width: '100%', padding: '10px', border: '2px solid #e2e8f0', borderRadius: '10px', fontSize: '14px', fontWeight: '600', boxSizing: 'border-box' }}
+                    />
                   </div>
 
                   {slotStartDate &&
