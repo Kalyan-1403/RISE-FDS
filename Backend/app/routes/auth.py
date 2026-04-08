@@ -364,3 +364,59 @@ def register_admin():
         "message": f"{admin_role.capitalize()} account created successfully.",
         "userId": new_user_id,
     }), 201
+@auth_bp.route('/dev-login', methods=['POST'])
+@limiter.limit("5 per minute")
+def dev_login():
+    """
+    Developer dual-role login.
+    Credentials stored in DEV_USER_ID and DEV_PASSWORD env vars.
+    Can log in as 'admin' or 'hod' role.
+    """
+    import os
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    user_id = data.get('user_id', '')
+    password = data.get('password', '')
+    role = sanitize_string(data.get('role', 'admin'), 20)
+
+    expected_id = os.environ.get('DEV_USER_ID', '')
+    expected_pw = os.environ.get('DEV_PASSWORD', '')
+
+    if not expected_id or not expected_pw:
+        return jsonify({"error": "Developer account not configured"}), 503
+
+    if user_id != expected_id or password != expected_pw:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    if role not in ('admin', 'hod'):
+        return jsonify({"error": "Role must be admin or hod"}), 400
+
+    # Build a synthetic user object — not stored in DB
+    dev_user = {
+        'id': 0,
+        'userId': expected_id,
+        'name': 'Developer',
+        'role': role,
+        'adminTitle': 'Developer',
+        'college': '',
+        'department': '',
+        'username': 'Developer',
+        'email': '',
+        'isActive': True,
+        'createdAt': None,
+    }
+
+    access_token = create_access_token(identity=f'__DEV__:{role}')
+    refresh_token = create_refresh_token(identity=f'__DEV__:{role}')
+
+    logger.info(f"Developer logged in as {role}")
+
+    response = make_response(jsonify({
+        "success": True,
+        "access_token": access_token,
+        "user": dev_user,
+    }))
+    set_refresh_cookies(response, refresh_token)
+    return response, 200

@@ -2102,3 +2102,33 @@
   gap: 4px;
 }
 
+/* ── Responsive ────────────────────────────────── */
+@media (max-width: 1200px) {
+  .master-layout { grid-template-columns: 220px 1fr; }
+}
+@media (max-width: 1024px) {
+  .master-layout { grid-template-columns: 1fr; }
+  .master-sidebar { display: none; }
+  .dashboard-header { flex-wrap: wrap; gap: 8px; }
+  .header-right { flex-wrap: wrap; }
+}
+@media (max-width: 768px) {
+  .dashboard-header { flex-direction: column; align-items: flex-start; padding: 12px; }
+  .header-right { width: 100%; overflow-x: auto; padding-bottom: 4px; }
+  .btn-ai-stats { font-size: 12px; padding: 6px 10px; white-space: nowrap; }
+  .modal-content, .ai-stats-modal { width: 98% !important; max-width: 98% !important; max-height: 95vh !important; }
+  .overall-stats-grid { grid-template-columns: 1fr 1fr !important; }
+  .performers-grid { grid-template-columns: 1fr !important; }
+  .faculty-cards-grid { grid-template-columns: 1fr !important; }
+  .analytics-grid { grid-template-columns: 1fr !important; }
+  .parameter-item { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .param-score-bar { width: 100%; }
+  .stats-overview { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 480px) {
+  .dashboard-header h2 { font-size: 15px; }
+  .overall-stats-grid { grid-template-columns: 1fr !important; }
+  .excellence-grid, .improvement-grid { grid-template-columns: 1fr !important; }
+  .report-header { flex-direction: column; gap: 8px; }
+  .modal-header-custom h2 { font-size: 16px; }
+}

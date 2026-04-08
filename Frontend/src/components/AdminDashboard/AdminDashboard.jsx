@@ -830,7 +830,6 @@ const openAdminSuggestionsView = async (college, dept) => {
 
     let facultyData = allDepartments[aiStatsDept] || [];
     if (aiStatsYear) facultyData = facultyData.filter((f) => f.year === aiStatsYear);
-    if (aiStatsBranch) facultyData = facultyData.filter((f) => f.branch === aiStatsBranch);
 
     if (facultyData.length === 0) {
       alert('⚠️ No faculty data for selected filters!');
@@ -867,14 +866,15 @@ const openAdminSuggestionsView = async (college, dept) => {
         const change = s1 !== null && s2 !== null ? (s2 - s1).toFixed(2) : null;
 
         // Get lowest-rated parameter for needs improvement display
-        let lowestParam = null;
+        // Get 2 lowest-rated parameters for needs improvement display
+        let lowestParams = [];
         const slotKey = selectedSemester === 'previous' ? 'slot1' : 'slot2';
         const paramStats = cached?.[slotKey]?.parameterStats || cached?.slot1?.parameterStats;
         if (paramStats) {
-          const sorted = Object.entries(paramStats)
+          lowestParams = Object.entries(paramStats)
             .map(([param, stats]) => ({ param, avg: parseFloat(stats.average) }))
-            .sort((a, b) => a.avg - b.avg);
-          if (sorted.length > 0) lowestParam = sorted[0];
+            .sort((a, b) => a.avg - b.avg)
+            .slice(0, 2);
         }
 
         return {
@@ -887,7 +887,7 @@ const openAdminSuggestionsView = async (college, dept) => {
           improvement: (currentRating - previousRating).toFixed(2),
           totalResponses: cached?.totalResponses || 0,
           hasData: cached ? cached.totalResponses > 0 : false,
-          lowestParam,
+          lowestParams,
         };
     });
 
@@ -1630,11 +1630,14 @@ const openAdminSuggestionsView = async (college, dept) => {
                       : selectedFaculty.statistics.slot1;
                     const topParams = getTopParameters(activeSlot?.parameterStats);
                     const bottomParams = getBottomParameters(activeSlot?.parameterStats);
-                    if (topParams.length === 0) return null;
+                    if (topParams.length === 0 && bottomParams.length === 0) return null;
                     return (
                       <>
-                        <div className="excellence-section">
+                       <div className="excellence-section">
                           <h4 className="section-title">🌟 Areas of Excellence</h4>
+                          {topParams.length === 0 ? (
+                            <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters above 9.0 in this slot.</p>
+                          ) : (
                           <div className="excellence-grid">
                             {topParams.map((item, idx) => (
                               <div key={item.parameter} className="excellence-card">
@@ -1649,9 +1652,13 @@ const openAdminSuggestionsView = async (college, dept) => {
                               </div>
                             ))}
                           </div>
+                          )}
                         </div>
                         <div className="improvement-section">
                           <h4 className="section-title">📈 Areas of Improvement</h4>
+                         {bottomParams.length === 0 ? (
+                            <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters below 8.0 — good performance across all areas.</p>
+                          ) : (
                           <div className="improvement-grid">
                             {bottomParams.map((item, idx) => {
                               let isAreaOfConcern = false;
@@ -1704,6 +1711,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                               );
                             })}
                           </div>
+                          )}
                         </div>
                       </>
                     );
@@ -1774,22 +1782,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                     </div>
                   )}
 
-                  {aiStatsDept && aiStatsDept.includes('S&H') && (
-                    <div className="config-section">
-                      <label>Filter by Branch</label>
-                      <select
-                        value={aiStatsBranch}
-                        onChange={(e) => setAiStatsBranch(e.target.value)}
-                        className="ai-select"
-                      >
-                        <option value="">All Branches</option>
-                        {['CSE', 'ECE', 'EEE', 'CIVIL', 'MECH'].map((b) => (
-                          <option key={b} value={b}>{b}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
+                 
                   <div className="config-section">
                     <label>Semester Comparison</label>
                     <div className="semester-options">
@@ -1894,21 +1887,18 @@ const openAdminSuggestionsView = async (college, dept) => {
                             No faculty has an average above 9.0 for the selected slot.
                           </div>
                         ) : (
-                          <div className="performers-grid">
+                          <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '8px' }}>
                             {aiStatsData.topPerformers.map((faculty, idx) => (
-                              <div key={faculty.id} className="performer-card top">
-                                <div className="performer-rank">{idx + 1}</div>
-                                <div className="performer-info">
-                                  <h4>{faculty.name}</h4>
-                                  <p>{faculty.subject} ({faculty.code})</p>
+                              <div key={faculty.id} style={{ minWidth: '200px', maxWidth: '220px', flexShrink: 0, padding: '16px', borderRadius: '14px', background: 'linear-gradient(135deg,#ecfdf5,#d1fae5)', border: '2px solid #10b981', textAlign: 'center' }}>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#10b981', color: 'white', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+                                  {idx + 1}
                                 </div>
-                                <div className="performer-stats">
-                                  <span className="performer-rating" style={{ color: getRatingColor(faculty.currentRating) }}>
-                                    ⭐ {faculty.currentRating.toFixed(2)}/10
-                                  </span>
-                                </div>
-                                <div className="performer-meter">
-                                  <div className="meter-fill" style={{ width: `${(faculty.currentRating / 10) * 100}%`, backgroundColor: getRatingColor(faculty.currentRating) }} />
+                                <div style={{ fontWeight: '800', fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>{faculty.name}</div>
+                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px' }}>{faculty.subject} ({faculty.code})</div>
+                                <div style={{ fontSize: '22px', fontWeight: '900', color: '#10b981' }}>{faculty.currentRating.toFixed(2)}</div>
+                                <div style={{ fontSize: '11px', color: '#15803d', fontWeight: '700' }}>out of 10</div>
+                                <div style={{ marginTop: '8px', height: '6px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${(faculty.currentRating / 10) * 100}%`, background: '#10b981', borderRadius: '4px' }} />
                                 </div>
                               </div>
                             ))}
@@ -1923,26 +1913,27 @@ const openAdminSuggestionsView = async (college, dept) => {
                             ✅ All faculty are performing at 8.0 or above for the selected slot.
                           </div>
                         ) : (
-                          <div className="performers-grid">
+                          <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '8px' }}>
                             {aiStatsData.needsImprovement.map((faculty) => (
-                              <div key={faculty.id} className="performer-card needs-improvement">
-                                <div className="performer-info">
-                                  <h4>{faculty.name}</h4>
-                                  <p>{faculty.subject} ({faculty.code})</p>
-                                  {faculty.lowestParam && (
-                                    <div style={{ marginTop: '6px', padding: '5px 10px', background: '#fee2e2', borderRadius: '6px', fontSize: '11px', fontWeight: '700', color: '#b91c1c' }}>
-                                      📌 Focus: {faculty.lowestParam.param} ({faculty.lowestParam.avg.toFixed(1)}/10)
-                                    </div>
-                                  )}
+                              <div key={faculty.id} style={{ minWidth: '220px', maxWidth: '240px', flexShrink: 0, padding: '16px', borderRadius: '14px', background: 'linear-gradient(135deg,#fef2f2,#fee2e2)', border: '2px solid #ef4444' }}>
+                                <div style={{ fontWeight: '800', fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>{faculty.name}</div>
+                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>{faculty.subject} ({faculty.code})</div>
+                                <div style={{ fontSize: '22px', fontWeight: '900', color: '#ef4444' }}>{faculty.currentRating.toFixed(2)}</div>
+                                <div style={{ fontSize: '11px', color: '#b91c1c', fontWeight: '700', marginBottom: '10px' }}>out of 10</div>
+                                <div style={{ marginTop: '4px', height: '6px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
+                                  <div style={{ height: '100%', width: `${(faculty.currentRating / 10) * 100}%`, background: '#ef4444', borderRadius: '4px' }} />
                                 </div>
-                                <div className="performer-stats">
-                                  <span className="performer-rating" style={{ color: getRatingColor(faculty.currentRating) }}>
-                                    ⭐ {faculty.currentRating.toFixed(2)}/10
-                                  </span>
-                                </div>
-                                <div className="performer-meter">
-                                  <div className="meter-fill" style={{ width: `${(faculty.currentRating / 10) * 100}%`, backgroundColor: getRatingColor(faculty.currentRating) }} />
-                                </div>
+                                {faculty.lowestParams && faculty.lowestParams.length > 0 && (
+                                  <div style={{ borderTop: '1px solid #fecaca', paddingTop: '8px' }}>
+                                    <div style={{ fontSize: '10px', fontWeight: '800', color: '#b91c1c', marginBottom: '6px', textTransform: 'uppercase' }}>📌 Focus Areas</div>
+                                    {faculty.lowestParams.map((p, i) => (
+                                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'white', borderRadius: '6px', marginBottom: '4px', fontSize: '11px' }}>
+                                        <span style={{ color: '#1e293b', fontWeight: '600', flex: 1, marginRight: '6px' }}>{p.param}</span>
+                                        <span style={{ fontWeight: '800', color: '#b91c1c', whiteSpace: 'nowrap' }}>{p.avg.toFixed(1)}/10</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>

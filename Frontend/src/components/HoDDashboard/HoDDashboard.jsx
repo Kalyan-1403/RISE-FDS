@@ -46,6 +46,13 @@ const HoDDashboard = () => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [totalStudents, setTotalStudents] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  // New publish modal state (separate from configure panel)
+  const [publishYear, setPublishYear] = useState('');
+  const [publishSection, setPublishSection] = useState('');
+  const [publishStudents, setPublishStudents] = useState('');
+  // Download section state
+  const [downloadYear, setDownloadYear] = useState('');
+  const [downloadSection, setDownloadSection] = useState('');
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
   const [deleteAccountError, setDeleteAccountError] = useState('');
@@ -212,25 +219,13 @@ const handleDeleteAccount = async () => {
     }
 
     if (isSH) {
-      if (
-        !selectedBranch ||
-        !selectedSem ||
-        !selectedSec
-      ) {
-        alert(
-          '⚠️ Select Branch, Semester & Section first'
-        );
+      if (!selectedBranch || !selectedSem) {
+        alert('⚠️ Select Branch and Semester first');
         return;
       }
     } else {
-      if (
-        !selectedYear ||
-        !selectedSem ||
-        !selectedSec
-      ) {
-        alert(
-          '⚠️ Select Year, Semester & Section first'
-        );
+      if (!selectedYear || !selectedSem) {
+        alert('⚠️ Select Year and Semester first');
         return;
       }
     }
@@ -244,7 +239,7 @@ const handleDeleteAccount = async () => {
         ? selectedBranch
         : currentUser.department,
       sem: selectedSem,
-      sec: selectedSec,
+      sec: '',
       dept: currentUser.department,
       college: currentUser.college,
     };
@@ -308,67 +303,19 @@ const handleDeleteAccount = async () => {
     }
   };
 
-    const openPublishModal = () => {
+const openPublishModal = () => {
     if (facultyList.length === 0) {
-      alert(
-        '⚠️ Add at least one faculty member first.'
-      );
+      alert('⚠️ Add at least one faculty member first.');
       return;
     }
-
-    if (isSH && !selectedBranch) {
-      alert('⚠️ Please select a Branch first');
-      return;
-    }
-    if (!isSH && !selectedYear) {
-      alert('⚠️ Please select a Year first');
-      return;
-    }
-    if (!selectedSem) {
-      alert(
-        '⚠️ Please select a Semester first'
-      );
-      return;
-    }
-    if (!selectedSec) {
-      alert(
-        '⚠️ Please select a Section first'
-      );
-      return;
-    }
-
-    // Filter faculty matching current selection
-    const matchingFaculty =
-      facultyList.filter((f) => {
-        if (isSH) {
-          return (
-            f.branch === selectedBranch &&
-            f.sem === selectedSem &&
-            f.sec === selectedSec
-          );
-        }
-        return (
-          f.year === selectedYear &&
-          f.sem === selectedSem &&
-          f.sec === selectedSec
-        );
-      });
-
-    if (matchingFaculty.length === 0) {
-      const label = isSH
-        ? `Branch ${selectedBranch}`
-        : `Year ${selectedYear}`;
-      alert(
-        `⚠️ No faculty found for ${label}, ` +
-          `Sem ${selectedSem}, ` +
-          `Sec ${selectedSec}`
-      );
-      return;
-    }
-
-    setSelectedFacultyIds(
-      matchingFaculty.map((f) => f.id)
-    );
+    // Reset publish modal state
+    setPublishYear(isSH ? 'I' : (selectedYear || ''));
+    setPublishSection('');
+    setPublishStudents('');
+    setSelectedFacultyIds([]);
+    setSlotNumber(1);
+    setSlotStartDate('');
+    setSlotEndDate('');
     setShowModal(true);
   };
 
@@ -383,74 +330,54 @@ const handleDeleteAccount = async () => {
   // Publish batch via BACKEND
   const confirmPublish = async () => {
     if (selectedFacultyIds.length === 0) {
-      alert('⚠️ Select at least one faculty');
+      alert('⚠️ Select at least one faculty from the right panel');
       return;
     }
-
-    if (!selectedSem || !selectedSec) {
-      alert(
-        '⚠️ Please select Semester and Section in the Configure Session panel first'
-      );
+    if (!publishYear) {
+      alert('⚠️ Please select a Year');
       return;
     }
-
-    if (isSH && !selectedBranch) {
-      alert('⚠️ Please select a Branch first');
+    if (!publishSection) {
+      alert('⚠️ Please select a Section');
       return;
     }
-
-    if (!isSH && !selectedYear) {
-      alert('⚠️ Please select a Year first');
-      return;
-    }
-
-    if (!slotStartDate || !slotEndDate) {
-      alert(
-        '⚠️ Please select start and end dates for this slot'
-      );
-      return;
-    }
-
-    if (
-      new Date(slotEndDate) <=
-      new Date(slotStartDate)
-    ) {
-      alert(
-        '⚠️ End date must be after start date'
-      );
-      return;
-    }
-    if (!totalStudents || parseInt(totalStudents) < 1) {
+    if (!publishStudents || parseInt(publishStudents) < 1) {
       alert('⚠️ Please enter the total number of students for this section');
       return;
     }
+    if (!selectedSem) {
+      alert('⚠️ Please select a Semester in the Configure Session panel first');
+      return;
+    }
+    if (!slotStartDate || !slotEndDate) {
+      alert('⚠️ Please select start and end dates for this slot');
+      return;
+    }
+    if (new Date(slotEndDate) <= new Date(slotStartDate)) {
+      alert('⚠️ End date must be after start date');
+      return;
+    }
 
-    const targetYear = isSH ? 'I' : selectedYear;
-    const targetBranch = isSH
-      ? selectedBranch
-      : currentUser.department;
+    const targetYear = isSH ? 'I' : publishYear;
+    const targetBranch = isSH ? selectedBranch : currentUser.department;
 
     setIsPublishing(true);
 
     try {
-      const result =
-        await dataService.createBatch({
-          college: currentUser.college,
-          dept: currentUser.department,
-          branch: targetBranch,
-          year: targetYear,
-          sem: selectedSem,
-          sec: selectedSec,
-          slot: slotNumber,
-          slotStartDate: slotStartDate,
-          slotEndDate: slotEndDate,
-          slotLabel:
-            slotNumber === 1
-              ? 'Previous Feedback Cycle'
-              : 'Latest Feedback Cycle',
-          faculty_ids: selectedFacultyIds,
-	  totalStudents: parseInt(totalStudents) || 0,
-        });
+      const result = await dataService.createBatch({
+        college: currentUser.college,
+        dept: currentUser.department,
+        branch: targetBranch,
+        year: targetYear,
+        sem: selectedSem,
+        sec: publishSection,
+        slot: slotNumber,
+        slotStartDate: slotStartDate,
+        slotEndDate: slotEndDate,
+        slotLabel: slotNumber === 1 ? 'Previous Feedback Cycle' : 'Latest Feedback Cycle',
+        faculty_ids: selectedFacultyIds,
+        totalStudents: parseInt(publishStudents) || 0,
+      });
 
       if (result && result.feedbackLink) {
         const fullLink = result.feedbackLink.startsWith('http')
@@ -480,7 +407,9 @@ const handleDeleteAccount = async () => {
         setSlotNumber(1);
         setSlotStartDate('');
         setSlotEndDate('');
-	setTotalStudents('');
+        setPublishYear('');
+        setPublishSection('');
+        setPublishStudents('');
 
         // Refresh batches
         await loadDashboardData();
@@ -771,31 +700,6 @@ console.error('PDF error:', err);
                       ))}
                     </select>
                   </div>
-                  <div className="form-field">
-                    <label>Section</label>
-                    <select
-                      value={selectedSec}
-                      onChange={(e) =>
-                        setSelectedSec(
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="">
-                        Select
-                      </option>
-                      {availableSections.map(
-                        (sec) => (
-                          <option
-                            key={sec}
-                            value={sec}
-                          >
-                            {sec}
-                          </option>
-                        )
-                      )}
-                    </select>
-                  </div>
                 </div>
 
                 <div className="divider" />
@@ -878,6 +782,46 @@ console.error('PDF error:', err);
                 >
                   🚀 Publish Feedback Link
                 </button>
+
+                <div className="divider" />
+
+                {/* ── Download Section ── */}
+                <div style={{ padding: '12px', background: '#f0fdf4', borderRadius: '12px', border: '2px solid #86efac' }}>
+                  <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: '800', color: '#15803d' }}>
+                    📥 Download Section Responses
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <select
+                      value={downloadYear}
+                      onChange={(e) => setDownloadYear(e.target.value)}
+                      style={{ padding: '8px', borderRadius: '8px', border: '1px solid #86efac', fontSize: '13px', fontWeight: '600' }}
+                    >
+                      <option value="">Select Year</option>
+                      {YEARS.map(y => <option key={y} value={y}>{y} Year</option>)}
+                    </select>
+                    <select
+                      value={downloadSection}
+                      onChange={(e) => setDownloadSection(e.target.value)}
+                      style={{ padding: '8px', borderRadius: '8px', border: '1px solid #86efac', fontSize: '13px', fontWeight: '600' }}
+                    >
+                      <option value="">Select Section</option>
+                      {availableSections.map(s => <option key={s} value={s}>Section {s}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!downloadYear || !downloadSection) {
+                          alert('⚠️ Select Year and Section to download');
+                          return;
+                        }
+                        alert(`📥 Download for Year ${downloadYear} Section ${downloadSection} — format to be configured`);
+                      }}
+                      style={{ padding: '8px', background: 'linear-gradient(135deg,#10b981,#059669)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
+                    >
+                      📥 Download
+                    </button>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -1166,337 +1110,186 @@ console.error('PDF error:', err);
         </main>
 
         {showModal && (
-          <div
-            className="modal-overlay"
-            onClick={() => setShowModal(false)}
-          >
+          <div className="modal-overlay" onClick={() => setShowModal(false)}>
             <div
               className="modal-content"
-              onClick={(e) =>
-                e.stopPropagation()
-              }
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: '860px', width: '95%', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
             >
               <div className="modal-header">
-                <h2>
-                  🔗 Publish Feedback Link
-                </h2>
-                <p>
-                  Configure slot details and
-                  select faculty members
-                </p>
+                <h2>🔗 Publish Feedback Link</h2>
+                <p>Configure section details and select faculty for this link</p>
               </div>
 
-              <div className="modal-body">
-                <div
-                  style={{
-                    padding: '16px',
-                    background:
-                      'linear-gradient(135deg, #e0f2fe, #dbeafe)',
-                    borderRadius: '12px',
-                    marginBottom: '20px',
-                    border:
-                      '2px solid #0ea5e9',
-                  }}
-                >
-                  <h3
-                    style={{
-                      margin: '0 0 16px 0',
-                      fontSize: '16px',
-                      fontWeight: '700',
-                      color: '#0c4a6e',
-                    }}
-                  >
-                    📅 Slot Configuration
-                  </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0', flex: 1, overflow: 'hidden' }}>
 
-                  <div
-                    style={{
-                      marginBottom: '16px',
-                    }}
-                  >
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        marginBottom: '8px',
-                        color: '#2d3436',
-                      }}
-                    >
-                      Select Slot
-                    </label>
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '10px',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSlotNumber(1)
-                        }
-                        style={{
-                          flex: 1,
-                          padding: '12px',
-                          border:
-                            slotNumber === 1
-                              ? '2px solid #0ea5e9'
-                              : '2px solid #e2e8f0',
-                          borderRadius: '10px',
-                          background:
-                            slotNumber === 1
-                              ? 'linear-gradient(135deg, #0ea5e9, #06b6d4)'
-                              : '#f8fafc',
-                          color:
-                            slotNumber === 1
-                              ? 'white'
-                              : '#2d3436',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                        }}
+                {/* ── LEFT PANEL ── */}
+                <div style={{ padding: '20px', borderRight: '2px solid #e2e8f0', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>📋 Section & Slot Details</h3>
+
+                  {/* Year */}
+                  {!isSH && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Year</label>
+                      <select
+                        value={publishYear}
+                        onChange={(e) => { setPublishYear(e.target.value); setSelectedFacultyIds([]); }}
+                        style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}
                       >
-                        📋 Slot 1 (Previous)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSlotNumber(2)
-                        }
-                        style={{
-                          flex: 1,
-                          padding: '12px',
-                          border:
-                            slotNumber === 2
-                              ? '2px solid #0ea5e9'
-                              : '2px solid #e2e8f0',
-                          borderRadius: '10px',
-                          background:
-                            slotNumber === 2
-                              ? 'linear-gradient(135deg, #0ea5e9, #06b6d4)'
-                              : '#f8fafc',
-                          color:
-                            slotNumber === 2
-                              ? 'white'
-                              : '#2d3436',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        📋 Slot 2 (Latest)
-                      </button>
+                        <option value="">Select Year</option>
+                        {YEARS.map(y => <option key={y} value={y}>{y} Year</option>)}
+                      </select>
                     </div>
+                  )}
+
+                  {/* Section */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Section</label>
+                    <select
+                      value={publishSection}
+                      onChange={(e) => setPublishSection(e.target.value)}
+                      style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}
+                    >
+                      <option value="">Select Section</option>
+                      {availableSections.map(s => <option key={s} value={s}>Section {s}</option>)}
+                    </select>
                   </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns:
-                        '1fr 1fr',
-                      gap: '12px',
-                    }}
-                  >
+                  {/* Student Count */}
+                  {publishSection && (
                     <div>
-                      <label
-                        style={{
-                          display: 'block',
-                          fontSize: '13px',
-                          fontWeight: '700',
-                          marginBottom: '6px',
-                          color: '#2d3436',
-                        }}
-                      >
-                        Start Date
-                      </label>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>👥 Total Students in Section {publishSection}</label>
                       <input
-                        type="date"
-                        value={slotStartDate}
-                        onChange={(e) =>
-                          setSlotStartDate(
-                            e.target.value
-                          )
-                        }
-                        style={{
-                          width: '100%',
-                          padding: '10px',
-                          border:
-                            '2px solid #e2e8f0',
-                          borderRadius: '10px',
-                          fontSize: '14px',
-                          fontWeight: '600',
-                        }}
-                        required
+                        type="number" min="1" max="500"
+                        value={publishStudents}
+                        onChange={(e) => setPublishStudents(e.target.value)}
+                        placeholder="e.g. 65"
+                        style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600', boxSizing: 'border-box' }}
                       />
                     </div>
-                    <div>
-                      <label
-                        style={{
-                          display: 'block',
-                          fontSize: '13px',
-                          fontWeight: '700',
-                          marginBottom: '6px',
-                          color: '#2d3436',
-                        }}
-                      >
-                        End Date
-                      </label>
-                      <input
-                        type="date"
-                        value={slotEndDate}
-                        onChange={(e) =>
-                          setSlotEndDate(
-                            e.target.value
-                          )
-                        }
-                        min={slotStartDate}
-                        style={{
-                          width: '100%',
-                          padding: '10px',
-                          border:
-                            '2px solid #e2e8f0',
-                          borderRadius: '10px',
-                          fontSize: '14px',
-                          fontWeight: '600',
-                        }}
-                        required
-                      />
-                    </div>
-                  </div>
-	<div style={{ marginTop: '16px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '6px', color: '#2d3436' }}>
-                      👥 Total Students in this Section
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="500"
-                      value={totalStudents}
-                      onChange={(e) => setTotalStudents(e.target.value)}
-                      placeholder="Enter total student strength (e.g. 65)"
-                      style={{ width: '100%', padding: '10px', border: '2px solid #e2e8f0', borderRadius: '10px', fontSize: '14px', fontWeight: '600', boxSizing: 'border-box' }}
-                    />
+                  )}
+
+                  {/* Slot Selection with Locking */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '8px', color: '#374151' }}>Select Slot</label>
+                    {(() => {
+                      const targetYear = isSH ? 'I' : publishYear;
+                      const slot1Done = allBatches.some(b =>
+                        b.year === targetYear && b.sem === selectedSem && b.sec === publishSection && b.slot === 1
+                      );
+                      const slot2Done = allBatches.some(b =>
+                        b.year === targetYear && b.sem === selectedSem && b.sec === publishSection && b.slot === 2
+                      );
+                      return (
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button
+                            type="button"
+                            onClick={() => !slot1Done && setSlotNumber(1)}
+                            disabled={slot1Done}
+                            style={{
+                              flex: 1, padding: '10px', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: slot1Done ? 'not-allowed' : 'pointer',
+                              border: slotNumber === 1 ? '2px solid #0ea5e9' : '2px solid #e2e8f0',
+                              background: slot1Done ? '#e2e8f0' : slotNumber === 1 ? 'linear-gradient(135deg,#0ea5e9,#06b6d4)' : '#f8fafc',
+                              color: slot1Done ? '#94a3b8' : slotNumber === 1 ? 'white' : '#2d3436',
+                            }}
+                          >
+                            {slot1Done ? '✅ Slot 1 Done' : '📋 Slot 1 (Previous)'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => !slot2Done && slot1Done && setSlotNumber(2)}
+                            disabled={!slot1Done || slot2Done}
+                            style={{
+                              flex: 1, padding: '10px', borderRadius: '10px', fontWeight: '700', fontSize: '13px',
+                              cursor: (!slot1Done || slot2Done) ? 'not-allowed' : 'pointer',
+                              border: slotNumber === 2 ? '2px solid #0ea5e9' : '2px solid #e2e8f0',
+                              background: slot2Done ? '#e2e8f0' : !slot1Done ? '#f8fafc' : slotNumber === 2 ? 'linear-gradient(135deg,#0ea5e9,#06b6d4)' : '#f8fafc',
+                              color: (slot2Done || !slot1Done) ? '#94a3b8' : slotNumber === 2 ? 'white' : '#2d3436',
+                            }}
+                          >
+                            {slot2Done ? '✅ Slot 2 Done' : !slot1Done ? '🔒 Slot 2 (Locked)' : '📋 Slot 2 (Latest)'}
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
-                  {slotStartDate &&
-                    slotEndDate && (
-                      <div
-                        style={{
-                          marginTop: '12px',
-                          padding: '8px 12px',
-                          background:
-                            'rgba(14, 165, 233, 0.1)',
-                          borderRadius: '8px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          color: '#0369a1',
-                        }}
-                      >
-                        ℹ️ This slot will be
-                        active from{' '}
-                        {new Date(
-                          slotStartDate
-                        ).toLocaleDateString()}{' '}
-                        to{' '}
-                        {new Date(
-                          slotEndDate
-                        ).toLocaleDateString()}
-                      </div>
-                    )}
+                  {/* Dates */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Start Date</label>
+                      <input type="date" value={slotStartDate} onChange={(e) => setSlotStartDate(e.target.value)}
+                        style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }} required />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>End Date</label>
+                      <input type="date" value={slotEndDate} onChange={(e) => setSlotEndDate(e.target.value)} min={slotStartDate}
+                        style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }} required />
+                    </div>
+                  </div>
+
+                  {slotStartDate && slotEndDate && (
+                    <div style={{ padding: '8px 12px', background: 'rgba(14,165,233,0.1)', borderRadius: '8px', fontSize: '12px', fontWeight: '600', color: '#0369a1' }}>
+                      ℹ️ Active from {new Date(slotStartDate).toLocaleDateString()} to {new Date(slotEndDate).toLocaleDateString()}
+                    </div>
+                  )}
                 </div>
 
-                <div
-                  style={{
-                    padding: '16px',
-                    background: '#ffffff',
-                    borderRadius: '12px',
-                    border:
-                      '2px solid #e2e8f0',
-                  }}
-                >
-                  <div className="section-header">
-                    <h3>
-                      👥 Select Faculty Members
-                    </h3>
-                     <p>
-                      {selectedFacultyIds.length}{' '}
-                      of{' '}
-                      {facultyList.filter((f) => {
-                        if (isSH) return f.branch === selectedBranch && f.sem === selectedSem && f.sec === selectedSec;
-                        return f.year === selectedYear && f.sem === selectedSem && f.sec === selectedSec;
-                      }).length}{' '}
-                      selected
-                    </p>
-                  </div>
-
-                                    {facultyList
-                    .filter((f) => {
-                      if (isSH) {
-                        return (
-                          f.branch ===
-                            selectedBranch &&
-                          f.sem ===
-                            selectedSem &&
-                          f.sec === selectedSec
-                        );
-                      }
-                      return (
-                        f.year ===
-                          selectedYear &&
-                        f.sem ===
-                          selectedSem &&
-                        f.sec === selectedSec
+                {/* ── RIGHT PANEL ── */}
+                <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>
+                    👥 Select Faculty
+                    {publishYear && <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', marginLeft: '8px' }}>(Year {publishYear})</span>}
+                  </h3>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#64748b' }}>
+                    {selectedFacultyIds.length} selected
+                  </p>
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {(() => {
+                      const filtered = facultyList.filter(f => {
+                        if (isSH) return f.branch === selectedBranch && f.sem === selectedSem;
+                        return publishYear ? f.year === publishYear && f.sem === selectedSem : f.sem === selectedSem;
+                      });
+                      if (filtered.length === 0) return (
+                        <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
+                          <div style={{ fontSize: '30px', marginBottom: '8px' }}>🧑‍🏫</div>
+                          <p style={{ fontSize: '13px' }}>No faculty found for selected year/semester</p>
+                        </div>
                       );
-                    })
-                    .map((faculty) => (
-                      <div
-                        key={faculty.id}
-                        className="checkbox-card"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedFacultyIds.includes(
-                            faculty.id
-                          )}
-                          onChange={() =>
-                            toggleFacultySelection(
-                              faculty.id
-                            )
-                          }
-                        />
-                        <div className="checkbox-content">
-                          <span className="checkbox-code">
-                            {faculty.code}
-                          </span>
-                          <div>
-                            <div className="checkbox-name">
-                              {faculty.name}
-                            </div>
-                            <div className="checkbox-subject">
-                              {faculty.subject}
-                            </div>
+                      return filtered.map(faculty => (
+                        <div
+                          key={faculty.id}
+                          onClick={() => {
+                            setSelectedFacultyIds(prev =>
+                              prev.includes(faculty.id) ? prev.filter(id => id !== faculty.id) : [...prev, faculty.id]
+                            );
+                          }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px',
+                            borderRadius: '10px', cursor: 'pointer', border: '2px solid',
+                            borderColor: selectedFacultyIds.includes(faculty.id) ? '#0ea5e9' : '#e2e8f0',
+                            background: selectedFacultyIds.includes(faculty.id) ? 'rgba(14,165,233,0.08)' : '#f8fafc',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <input type="checkbox" checked={selectedFacultyIds.includes(faculty.id)} onChange={() => {}} style={{ accentColor: '#0ea5e9' }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>{faculty.name}</div>
+                            <div style={{ fontSize: '12px', color: '#64748b' }}>{faculty.code} • {faculty.subject}</div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Year {faculty.year} • Sem {faculty.sem}</div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ));
+                    })()}
+                  </div>
                 </div>
               </div>
 
               <div className="modal-footer">
-                <button
-                  className="btn-confirm"
-                  onClick={confirmPublish}
-                  disabled={isPublishing}
-                >
-                  {isPublishing
-                    ? '⏳ Publishing...'
-                    : '✅ Confirm & Publish'}
+                <button className="btn-confirm" onClick={confirmPublish} disabled={isPublishing}>
+                  {isPublishing ? '⏳ Publishing...' : '✅ Confirm & Publish'}
                 </button>
-                <button
-                  className="btn-modal-cancel"
-                  onClick={() =>
-                    setShowModal(false)
-                  }
-                >
+                <button className="btn-modal-cancel" onClick={() => setShowModal(false)}>
                   ❌ Cancel
                 </button>
               </div>
