@@ -18,7 +18,6 @@ class DepartmentSection(db.Model):
     __table_args__ = (
          db.UniqueConstraint('college', 'department', 'year', 'branch', 'section_name',
                             name='uq_dept_section'),
-        db.Index('idx_section_college_dept', 'college', 'department'),
     )
 
     def to_dict(self):
@@ -28,7 +27,7 @@ class DepartmentSection(db.Model):
             'department': self.department,
             'year': self.year,
             'sectionName': self.section_name,
-	    'branch': self.branch or '',
+	        'branch': self.branch or '',
             'strength': self.strength,
             'isActive': self.is_active,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
