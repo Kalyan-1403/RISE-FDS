@@ -143,6 +143,12 @@ export const batchAPI = {
   list: () => api.get('/batch/list'),
 };
 
+export const sectionAPI = {
+  getAll: () => api.get('/batch/sections'),
+  create: (data) => api.post('/batch/sections', data),
+  update: (id, data) => api.put(`/batch/sections/${id}`, data),
+  delete: (id) => api.delete(`/batch/sections/${id}`),
+};
 export const feedbackAPI = {
   submit: (data) => api.post('/feedback/submit', data),
   getFacultyStats: (facultyId) => api.get(`/feedback/faculty/${facultyId}/stats`),

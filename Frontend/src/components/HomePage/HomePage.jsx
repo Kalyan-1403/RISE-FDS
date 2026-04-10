@@ -109,7 +109,7 @@ const handleAdminRegister = async (e) => {
     setError('');
 
     if (!userId.trim()) {
-      setError('Please enter your User ID');
+      setError('Please enter your User ID, Email or Mobile')
       return;
     }
     if (!password) {
@@ -320,7 +320,7 @@ const handleAdminRegister = async (e) => {
                 <span className="label-icon">
                   👤
                 </span>
-                User ID
+                User ID/Email/Mobile Number
               </label>
               <input
                 type="text"
@@ -329,7 +329,7 @@ const handleAdminRegister = async (e) => {
                   setUserId(e.target.value);
                   setError('');
                 }}
-                placeholder="Enter your User ID"
+                placeholder="User ID, Email or Mobile"
               />
             </div>
 

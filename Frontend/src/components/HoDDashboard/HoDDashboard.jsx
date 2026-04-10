@@ -7,6 +7,7 @@ import React, {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import dataService from '../../services/dataService.js';
+import { sectionAPI } from '../../services/api.js';
 import DeveloperCredit from '../DeveloperCredit/DeveloperCredit.jsx';
 import './HoDDashboard.css';
 import { generateFacultyPDF } from '../../utils/pdfGenerator';
@@ -14,12 +15,12 @@ import { generateFacultyExcel } from '../../utils/excelGenerator';
 
 const YEARS = ['II', 'III', 'IV'];
 const SEMESTERS = ['I', 'II'];
+const TWO_YEAR_DEPTS = ['M.TECH', 'MBA', 'MCA'];
 
+// All departments per college (excluding S&H itself — used by S&H HoD to pick branches)
 const BRANCHES_BY_COLLEGE = {
   Gandhi: ['CSE', 'ECE'],
-  Prakasam: [
-    'CSE', 'ECE', 'EEE', 'CIVIL', 'MECH',
-  ],
+  Prakasam: ['CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'MBA', 'MCA', 'M.TECH'],
 };
 
 const HoDDashboard = () => {
@@ -57,6 +58,15 @@ const HoDDashboard = () => {
   const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
   const [deleteAccountError, setDeleteAccountError] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+// Section management
+const [sections, setSections] = useState([]);
+const [selectedSection, setSelectedSection] = useState(null);
+const [selectedSHSection, setSelectedSHSection] = useState(null);
+const [showSectionModal, setShowSectionModal] = useState(false);
+const [sectionForm, setSectionForm] = useState({ year: 'II', sectionName: '', strength: '' });
+const [sectionError, setSectionError] = useState('');
+const [editingStrengthId, setEditingStrengthId] = useState(null);
+const [editingStrengthVal, setEditingStrengthVal] = useState('');
 
   // Load data from backend
   const loadDashboardData = useCallback(async () => {
@@ -80,6 +90,16 @@ const HoDDashboard = () => {
     }
   }, [currentUser]);
 
+  const loadSections = useCallback(async () => {
+    if (!currentUser || currentUser.role !== 'hod') return;
+    try {
+      const res = await sectionAPI.getAll();
+      setSections(res.data.sections || []);
+    } catch (e) {
+      console.warn('Could not load sections');
+    }
+  }, [currentUser]);
+
   useEffect(() => {
     if (
       !currentUser ||
@@ -89,6 +109,8 @@ const HoDDashboard = () => {
       return;
     }
     loadDashboardData();
+    loadSections();
+
 
     // Refetch when tab regains focus
     const handleFocus = () => loadDashboardData();
@@ -100,19 +122,32 @@ const HoDDashboard = () => {
         handleFocus
       );
     };
-  }, [currentUser, navigate, loadDashboardData]);
+    }, [currentUser, navigate, loadDashboardData, loadSections]);
 
   const isSH = useMemo(() => {
     return currentUser?.department === 'S&H';
   }, [currentUser]);
 
-  const availableSections = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.department === 'CSE') {
-      return ['1', '2', 'DS', 'AI&ML'];
-    }
-    return ['1', '2', '3'];
+      const availableYears = useMemo(() => {
+    if (!currentUser) return YEARS;
+    if (TWO_YEAR_DEPTS.includes(currentUser.department)) return ['I', 'II'];
+    return YEARS;
   }, [currentUser]);
+
+  const availableSections = useMemo(() => {
+    return sections.map(s => s.sectionName);
+  }, [sections]);
+
+    // For S&H: keyed by branch. For others: keyed by year.
+  const sectionsByKey = useMemo(() => {
+    const map = {};
+    sections.forEach(s => {
+      const key = isSH ? s.branch : s.year;
+      if (!map[key]) map[key] = [];
+      map[key].push(s);
+    });
+    return map;
+  }, [sections, isSH]);
 
   const availableBranches = useMemo(() => {
     if (!currentUser || !isSH) return [];
@@ -122,26 +157,24 @@ const HoDDashboard = () => {
     );
   }, [currentUser, isSH]);
 
-  const filteredFaculty = useMemo(() => {
+      const filteredFaculty = useMemo(() => {
     if (isSH) {
-      return selectedBranch
-        ? facultyList.filter(
-            (f) => f.branch === selectedBranch
-          )
-        : [];
+      if (!selectedBranch) return [];
+      let list = facultyList.filter((f) => f.branch === selectedBranch);
+      if (selectedSHSection) {
+        list = list.filter((f) => f.section === selectedSHSection || f.sec === selectedSHSection);
+      }
+      return list;
     } else {
-      return selectedYear
-        ? facultyList.filter(
-            (f) => f.year === selectedYear
-          )
+      let list = selectedYear
+        ? facultyList.filter((f) => f.year === selectedYear)
         : facultyList;
+      if (selectedSection) {
+        list = list.filter((f) => f.section === selectedSection || f.sec === selectedSection);
+      }
+      return list;
     }
-  }, [
-    facultyList,
-    selectedYear,
-    selectedBranch,
-    isSH,
-  ]);
+  }, [facultyList, selectedYear, selectedBranch, selectedSection, selectedSHSection, isSH]);
 
   const facultyByBranch = useMemo(() => {
     if (!isSH) return {};
@@ -863,6 +896,37 @@ console.error('PDF error:', err);
                     )}
                   </div>
 
+                                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: '8px' }}>
+                    {/* Section mini-tabs for selected branch */}
+                    {selectedBranch && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSHSection(null)}
+                          style={{ padding: '4px 12px', borderRadius: '20px', border: '2px solid', borderColor: selectedSHSection === null ? '#ff6b9d' : '#e2e8f0', background: selectedSHSection === null ? 'linear-gradient(135deg,#ff6b9d,#feca57)' : '#f8fafc', color: selectedSHSection === null ? 'white' : '#2d3436', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}
+                        >
+                          All
+                        </button>
+                        {(sectionsByKey[selectedBranch] || []).map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setSelectedSHSection(s.sectionName)}
+                            style={{ padding: '4px 12px', borderRadius: '20px', border: '2px solid', borderColor: selectedSHSection === s.sectionName ? '#ff6b9d' : '#e2e8f0', background: selectedSHSection === s.sectionName ? 'linear-gradient(135deg,#ff6b9d,#feca57)' : '#f8fafc', color: selectedSHSection === s.sectionName ? 'white' : '#2d3436', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}
+                          >
+                            {s.sectionName}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => { setSectionForm(f => ({ ...f, year: 'I', branch: selectedBranch })); setSectionError(''); setShowSectionModal(true); }}
+                          style={{ padding: '4px 10px', borderRadius: '20px', border: '2px dashed #48dbfb', background: '#f0fdff', color: '#0891b2', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}
+                        >
+                          + Manage
+                        </button>
+                      </div>
+                    )}
+
                   <div className="faculty-list">
                     {!selectedBranch && (
                       <div className="empty-state">
@@ -970,57 +1034,95 @@ console.error('PDF error:', err);
                       ))}
                   </div>
                 </div>
+	      </div>
               ) : (
                 <>
-                  <div className="year-tabs">
-                    {YEARS.map((y) => (
+                                    {/* Year Tabs */}
+                                    <div className="year-tabs">
+                    {availableYears.map((y) => (
                       <button
                         key={y}
                         type="button"
                         className={`tab-btn ${selectedYear === y ? 'active' : ''}`}
-                        onClick={() =>
-                          setSelectedYear(y)
-                        }
+                        onClick={() => {
+                          setSelectedYear(y);
+                          setSelectedSection(null);
+                        }}
                       >
                         <span>{y} Year</span>
                         <span className="count">
-                          {
-                            facultyList.filter(
-                              (f) =>
-                                f.year === y
-                            ).length
-                          }{' '}
-                          faculty
+                          {facultyList.filter((f) => f.year === y).length}{' '}faculty
                         </span>
                       </button>
                     ))}
                   </div>
 
-                  <div className="faculty-list">
-                    {selectedYear === '' &&
-                      facultyList.length === 0 && (
-                        <div className="empty-state">
-                          <span className="empty-icon">
-                            📂
+                  {/* Section sidebar + faculty list */}
+                  <div className="sh-layout" style={{ flex: 1, minHeight: 0 }}>
+                    {/* Section Sidebar */}
+                    <div className="branch-sidebar">
+                      <div className="sidebar-header">
+                        Sections
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSectionForm(f => ({ ...f, year: selectedYear || 'II' }));
+                            setSectionError('');
+                            setShowSectionModal(true);
+                          }}
+                          style={{ display: 'block', width: '100%', marginTop: '8px', padding: '6px', background: 'linear-gradient(135deg, #ff6b9d, #feca57)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          + Manage
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        className={`branch-btn ${selectedSection === null ? 'active' : ''}`}
+                        onClick={() => setSelectedSection(null)}
+                      >
+                        <span className="branch-name">All</span>
+                        <span className="branch-count">
+                          {facultyList.filter(f => f.year === selectedYear).length}
+                        </span>
+                      </button>
+
+                      {(sectionsByKey[selectedYear] || []).map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className={`branch-btn ${selectedSection === s.sectionName ? 'active' : ''}`}
+                          onClick={() => setSelectedSection(s.sectionName)}
+                        >
+                          <span className="branch-name">{s.sectionName}</span>
+                          <span className="branch-count">
+                            {facultyList.filter(f => f.year === selectedYear && (f.section === s.sectionName || f.sec === s.sectionName)).length}
                           </span>
-                          <p>
-                            Select a year to view
-                            faculty
-                          </p>
+                        </button>
+                      ))}
+
+                      {(sectionsByKey[selectedYear] || []).length === 0 && (
+                        <p style={{ fontSize: '11px', color: '#a0aec0', textAlign: 'center', padding: '8px' }}>
+                          No sections.<br />Click Manage.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Faculty List */}
+                    <div className="faculty-list">
+                      {!selectedYear && (
+                        <div className="empty-state">
+                          <span className="empty-icon">📂</span>
+                          <p>Select a year to view faculty</p>
                         </div>
                       )}
-
-                    {selectedYear !== '' &&
-                      filteredFaculty.length ===
-                        0 && (
+                      {selectedYear && filteredFaculty.length === 0 && (
                         <div className="empty-state">
-                          <span className="empty-icon">
-                            🧑‍🏫
-                          </span>
+                          <span className="empty-icon">🧑‍🏫</span>
                           <p>
-                            No faculty added for
-                            Year {selectedYear}{' '}
-                            yet
+                            {selectedSection
+                              ? `No faculty in Section ${selectedSection} for Year ${selectedYear}`
+                              : `No faculty added for Year ${selectedYear} yet`}
                           </p>
                         </div>
                       )}
@@ -1103,6 +1205,7 @@ console.error('PDF error:', err);
                       </div>
                     ))}
                   </div>
+		</div>
                 </>
               )}
             </section>
@@ -1247,9 +1350,9 @@ console.error('PDF error:', err);
                   <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {(() => {
                       const filtered = facultyList.filter(f => {
-                        if (isSH) return f.branch === selectedBranch && f.sem === selectedSem;
-                        return publishYear ? f.year === publishYear && f.sem === selectedSem : f.sem === selectedSem;
-                      });
+  if (isSH) return f.branch === selectedBranch;
+  return publishYear ? f.year === publishYear : true;
+});
                       if (filtered.length === 0) return (
                         <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
                           <div style={{ fontSize: '30px', marginBottom: '8px' }}>🧑‍🏫</div>
@@ -1296,6 +1399,149 @@ console.error('PDF error:', err);
             </div>
           </div>
         )}
+      {/* ── Manage Sections Modal ── */}
+      {showSectionModal && (
+        <div className="modal-overlay" onClick={() => setShowSectionModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Manage Sections</h2>
+              <p>Add or remove sections per year. Click 💪 to edit strength inline.</p>
+            </div>
+            <div className="modal-body">
+                            {isSH ? (
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#636e72', display: 'block', marginBottom: '6px' }}>Department (Branch)</label>
+                  <select
+                    value={sectionForm.branch || ''}
+                    onChange={e => setSectionForm(f => ({ ...f, branch: e.target.value, year: 'I' }))}
+                    style={{ width: '100%', padding: '9px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', background: '#f8fafc' }}
+                  >
+                    <option value="">Select Department</option>
+                    {availableBranches.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#636e72', display: 'block', marginBottom: '6px' }}>Select Year</label>
+                  <select
+                    value={sectionForm.year}
+                    onChange={e => setSectionForm(f => ({ ...f, year: e.target.value }))}
+                    style={{ width: '100%', padding: '9px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', background: '#f8fafc' }}
+                  >
+                    {availableYears.map(yr => <option key={yr} value={yr}>Year {yr}</option>)}
+                  </select>
+                </div>
+              )}
+
+                            {(sectionsByKey[isSH ? (sectionForm.branch || '') : sectionForm.year] || []).length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                                    <p style={{ fontWeight: '700', fontSize: '13px', marginBottom: '8px', color: '#2d3436' }}>
+                    Existing Sections — {isSH ? `${sectionForm.branch} Dept` : `Year ${sectionForm.year}`}
+                  </p>
+                  {(sectionsByKey[isSH ? (sectionForm.branch || '') : sectionForm.year] || []).map(s => (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: '#f8fafc', borderRadius: '10px', marginBottom: '8px', border: '2px solid #e2e8f0' }}>
+                      <span style={{ fontWeight: '800', color: '#ff6b9d', flex: 1 }}>{s.sectionName}</span>
+                      {editingStrengthId === s.id ? (
+                        <input
+                          type="number"
+                          value={editingStrengthVal}
+                          onChange={e => setEditingStrengthVal(e.target.value)}
+                          style={{ width: '70px', padding: '4px 8px', border: '2px solid #ff6b9d', borderRadius: '6px', fontWeight: '700', fontSize: '13px' }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span
+                          title="Click to edit strength"
+                          onClick={() => { setEditingStrengthId(s.id); setEditingStrengthVal(String(s.strength)); }}
+                          style={{ cursor: 'pointer', padding: '4px 10px', background: '#ffeaa7', borderRadius: '6px', fontWeight: '700', fontSize: '13px' }}
+                        >
+                          💪 {s.strength}
+                        </span>
+                      )}
+                      {editingStrengthId === s.id && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await sectionAPI.update(s.id, { strength: Number(editingStrengthVal) });
+                            setSections(prev => prev.map(x => x.id === s.id ? { ...x, strength: Number(editingStrengthVal) } : x));
+                            setEditingStrengthId(null);
+                          }}
+                          style={{ padding: '4px 10px', background: '#48dbfb', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer' }}
+                        >✓</button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Delete section "${s.sectionName}"?`)) return;
+                          await sectionAPI.delete(s.id);
+                          setSections(prev => prev.filter(x => x.id !== s.id));
+                          if (isSH) { if (selectedSHSection === s.sectionName) setSelectedSHSection(null); }
+else { if (selectedSection === s.sectionName) setSelectedSection(null); }
+                        }}
+                        style={{ padding: '4px 10px', background: '#ff6b9d', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer' }}
+                      >🗑</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ padding: '14px', background: '#f0fff4', borderRadius: '10px', border: '2px solid #48dbfb' }}>
+                <p style={{ fontWeight: '700', fontSize: '13px', marginBottom: '10px', color: '#2d3436' }}>Add New Section</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: '8px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#636e72' }}>Section Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. A, B, CSE-DS, AI&ML"
+                      value={sectionForm.sectionName}
+                      onChange={e => setSectionForm(f => ({ ...f, sectionName: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#636e72' }}>Strength</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={sectionForm.strength}
+                      onChange={e => setSectionForm(f => ({ ...f, strength: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
+                    />
+                  </div>
+                </div>
+                {sectionError && <p style={{ color: '#ff6b9d', fontSize: '12px', fontWeight: '700', marginBottom: '8px' }}>{sectionError}</p>}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setSectionError('');
+                                        if (isSH && !sectionForm.branch) { setSectionError('Select a department first'); return; }
+                    if (!sectionForm.sectionName.trim()) { setSectionError('Section name is required'); return; }
+                    try {
+                                            const res = await sectionAPI.create({
+                        year: isSH ? 'I' : sectionForm.year,
+                        branch: isSH ? (sectionForm.branch || '') : '',
+                        sectionName: sectionForm.sectionName.trim(),
+                        strength: Number(sectionForm.strength) || 0,
+                      });
+                      setSections(prev => [...prev, res.data.section]);
+                      setSectionForm(f => ({ ...f, sectionName: '', strength: '' }));
+                    } catch (err) {
+                      setSectionError(err.response?.data?.error || 'Failed to add section');
+                    }
+                  }}
+                  style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #ff6b9d, #feca57)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer' }}
+                >
+                  + Add Section
+                </button>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-modal-cancel" onClick={() => setShowSectionModal(false)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
 {showDeleteAccountModal && (
           <div className="modal-overlay" style={{ zIndex: 9999 }}>

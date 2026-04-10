@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 
 from ..extensions import db, limiter, add_to_blocklist
 from ..models.user import User
+from ..models.faculty import Faculty
+from ..models.batch import Batch
 from ..utils.validators import (
     sanitize_string,
     validate_name,
@@ -35,17 +37,28 @@ def login():
     if not data:
         return jsonify({"error": "Request body required"}), 400
 
-    user_id = sanitize_string(data.get('user_id', ''), 50)
+        identifier = sanitize_string(data.get('userid', ''), 150)
     password = data.get('password', '')
     role = sanitize_string(data.get('role', ''), 20)
 
-    if not user_id or not password:
-        return jsonify({"error": "User ID and password are required"}), 400
+    if not identifier or not password:
+        return jsonify({"error": "User ID, Email or Mobile and password are required"}), 400
 
-    user = User.query.filter(
-        db.func.lower(User.user_id) == user_id.lower(),
-        User.is_active == True,
-    ).first()
+    # Try User ID → Email → Mobile in order
+    user = (
+        User.query.filter(
+            db.func.lower(User.user_id) == identifier.lower(),
+            User.is_active == True
+        ).first()
+        or User.query.filter(
+            db.func.lower(User.email) == identifier.lower(),
+            User.is_active == True
+        ).first()
+        or User.query.filter(
+            User.mobile == identifier.strip(),
+            User.is_active == True
+        ).first()
+    )
 
     if not user or not user.check_password(password):
         return jsonify({"error": "Invalid credentials"}), 401
@@ -274,7 +287,18 @@ def delete_account():
     jti = get_jwt()["jti"]
     add_to_blocklist(jti)
 
-    # Hard delete the user record
+    # Delete all department data before removing the user
+    college = user.college
+    department = user.department
+
+        batches = Batch.query.filter_by(college=college, department=department).all()
+    for batch in batches:
+        db.session.delete(batch)  # cascades → BatchFaculty, FeedbackSubmission, FeedbackRating
+
+    faculty = Faculty.query.filter_by(college=college, department=department).all()
+    for f in faculty:
+        db.session.delete(f)  # cascades → FeedbackRating
+
     db.session.delete(user)
     db.session.commit()
 

@@ -170,3 +170,125 @@ def list_batches():
         ).order_by(Batch.created_at.desc()).all()
 
     return jsonify({"batches": [b.to_dict() for b in batches]}), 200
+
+
+# ─── Section Management Routes ───────────────────────────────────────────────
+
+from ..models.section import DepartmentSection
+
+@batch_bp.route('/sections', methods=['GET'])
+@require_auth
+def list_sections():
+    """List all sections for the HoD's department."""
+    user = g.current_user
+    if user.role == 'admin':
+        return jsonify({"error": "Admins do not have sections"}), 403
+
+    sections = DepartmentSection.query.filter_by(
+        college=user.college,
+        department=user.department,
+        is_active=True,
+    ).order_by(DepartmentSection.year, DepartmentSection.section_name).all()
+
+    return jsonify({"sections": [s.to_dict() for s in sections]}), 200
+
+
+@batch_bp.route('/sections', methods=['POST'])
+@require_role(['hod'])
+def create_section():
+    """Create a new section for the HoD's department."""
+    user = g.current_user
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    year = sanitize_string(data.get('year', ''), 10)
+    section_name = sanitize_string(data.get('sectionName', ''), 50)
+    branch = sanitize_string(data.get('branch', ''), 50)
+    strength = data.get('strength', 0)
+
+    if not year or not section_name:
+        return jsonify({"error": "Year and section name are required"}), 400
+
+    try:
+        strength = int(strength)
+        if strength < 0:
+            strength = 0
+    except (ValueError, TypeError):
+        strength = 0
+
+    existing = DepartmentSection.query.filter_by(
+        college=user.college,
+        department=user.department,
+        year=year,
+	branch=branch,
+        section_name=section_name,
+        is_active=True,
+    ).first()
+
+    if existing:
+        return jsonify({"error": f"Section '{section_name}' already exists for Year {year}"}), 409
+
+    section = DepartmentSection(
+        college=user.college,
+        department=user.department,
+        year=year,
+	branch=branch,
+        section_name=section_name,
+        strength=strength,
+        created_by=user.id,
+    )
+    db.session.add(section)
+    db.session.commit()
+
+    logger.info(f"Section created: {user.department} Y{year}-{section_name} by {user.user_id}")
+    return jsonify({"success": True, "section": section.to_dict()}), 201
+
+
+@batch_bp.route('/sections/<int:section_id>', methods=['PUT'])
+@require_role(['hod'])
+def update_section(section_id):
+    """Update section strength or name."""
+    user = g.current_user
+    section = DepartmentSection.query.get(section_id)
+
+    if not section or not section.is_active:
+        return jsonify({"error": "Section not found"}), 404
+    if section.college != user.college or section.department != user.department:
+        return jsonify({"error": "Access denied"}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    if 'strength' in data:
+        try:
+            section.strength = max(0, int(data['strength']))
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid strength value"}), 400
+
+    if 'sectionName' in data:
+        section.section_name = sanitize_string(data['sectionName'], 50)
+
+    db.session.commit()
+    logger.info(f"Section updated: id={section_id} by {user.user_id}")
+    return jsonify({"success": True, "section": section.to_dict()}), 200
+
+
+@batch_bp.route('/sections/<int:section_id>', methods=['DELETE'])
+@require_role(['hod'])
+def delete_section(section_id):
+    """Soft-delete a section."""
+    user = g.current_user
+    section = DepartmentSection.query.get(section_id)
+
+    if not section or not section.is_active:
+        return jsonify({"error": "Section not found"}), 404
+    if section.college != user.college or section.department != user.department:
+        return jsonify({"error": "Access denied"}), 403
+
+    section.is_active = False
+    db.session.commit()
+
+    logger.info(f"Section deleted: id={section_id} by {user.user_id}")
+    return jsonify({"success": True, "message": "Section deleted"}), 200

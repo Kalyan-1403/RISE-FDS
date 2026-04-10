@@ -186,10 +186,29 @@
 /* Config Panel */
 
 .config-panel {
-  height: auto;
-  max-height: fit-content;
-  overflow: visible;
+  height: calc(100vh - 220px);
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  overflow-x: hidden;
   align-self: start;
+}
+
+.config-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.config-panel::-webkit-scrollbar-track {
+  background: #f1f3f5;
+  border-radius: 10px;
+}
+
+.config-panel::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #ff6b9d, #feca57);
+  border-radius: 10px;
+}
+
+.config-panel::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #feca57, #48dbfb);
 }
 
 /* List Panel - FIXED HEIGHT */
@@ -715,10 +734,12 @@
 
   .config-panel {
     height: auto;
+    max-height: 80vh;
+    overflow-y: auto;
   }
 
   .list-panel {
-    height: 600px; /* Fixed height on smaller screens */
+    height: 600px;
     max-height: 600px;
   }
 }
@@ -777,8 +798,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  height: fit-content;
-  max-height: 600px;
+  height: 100%;
+  max-height: 100%;
   overflow-y: auto;
 }
 
@@ -854,7 +875,6 @@
   padding-right: 8px;
   flex: 1;
   min-height: 0;
-  max-height: 600px; /* Fixed height to enable scrolling */
 }
 
 .faculty-list::-webkit-scrollbar {
