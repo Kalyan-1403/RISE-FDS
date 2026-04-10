@@ -37,13 +37,13 @@ class User(db.Model):
         db.String(50),
         nullable=True,
     )
-     mobile = db.Column(
-        db.String(15),
+        email = db.Column(
+        db.String(150),
         nullable=True,
         index=True,
     )
-    email = db.Column(
-        db.String(150),
+    mobile = db.Column(
+        db.String(15),
         nullable=True,
         index=True,
     )
