@@ -37,7 +37,7 @@ class User(db.Model):
         db.String(50),
         nullable=True,
     )
-        email = db.Column(
+    email = db.Column(
         db.String(150),
         nullable=True,
         index=True,
