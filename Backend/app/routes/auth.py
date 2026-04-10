@@ -37,7 +37,7 @@ def login():
     if not data:
         return jsonify({"error": "Request body required"}), 400
 
-        identifier = sanitize_string(data.get('userid', ''), 150)
+    identifier = sanitize_string(data.get('userid', ''), 150)
     password = data.get('password', '')
     role = sanitize_string(data.get('role', ''), 20)
 
@@ -291,7 +291,7 @@ def delete_account():
     college = user.college
     department = user.department
 
-        batches = Batch.query.filter_by(college=college, department=department).all()
+    batches = Batch.query.filter_by(college=college, department=department).all()
     for batch in batches:
         db.session.delete(batch)  # cascades → BatchFaculty, FeedbackSubmission, FeedbackRating
 
@@ -373,7 +373,7 @@ def register_admin():
         user_id=new_user_id,
         name=name,
         role='admin',
-	college=user_college,
+	    college=user_college,
         email=email,
         mobile=mobile,
     )
