@@ -299,7 +299,7 @@ def delete_account():
     for f in faculty:
         db.session.delete(f)  # cascades → FeedbackRating
 
-    db.session.delete(user)
+        db.session.delete(user)
     db.session.commit()
 
     response = make_response(jsonify({
@@ -307,7 +307,7 @@ def delete_account():
         "message": "Account deleted successfully"
     }))
     unset_refresh_cookies(response)
-    logger.info(f"Account self-deleted: {user_id} ({user.college}/{user.department})")
+    logger.info(f"Account self-deleted: {user_id} ({college}/{department})")
     return response, 200
 
 @auth_bp.route('/register-admin', methods=['POST'])
