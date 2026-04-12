@@ -37,7 +37,7 @@ def login():
     if not data:
         return jsonify({"error": "Request body required"}), 400
 
-    identifier = sanitize_string(data.get('userid', ''), 150)
+    identifier = sanitize_string(data.get('user_id', '') or data.get('userid', ''), 150)
     password = data.get('password', '')
     role = sanitize_string(data.get('role', ''), 20)
 
