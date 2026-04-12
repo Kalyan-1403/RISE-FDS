@@ -165,7 +165,17 @@ const [isAssigning, setIsAssigning] = useState(false);
     );
   }, [currentUser, isSH]);
 
-      const filteredFaculty = useMemo(() => {
+      // Global pool = faculty with no year assigned
+  const globalFacultyPool = useMemo(() => {
+    return facultyList.filter(f => !f.year || f.year === '');
+  }, [facultyList]);
+
+  // Assigned faculty = faculty with year assigned
+  const assignedFaculty = useMemo(() => {
+    return facultyList.filter(f => f.year && f.year !== '');
+  }, [facultyList]);
+
+  const filteredFaculty = useMemo(() => {
     if (isSH) {
       if (!selectedBranch) return [];
       let list = assignedFaculty.filter((f) => f.branch === selectedBranch);
@@ -182,17 +192,7 @@ const [isAssigning, setIsAssigning] = useState(false);
       }
       return list;
     }
-  }, [facultyList, selectedYear, selectedBranch, selectedSection, selectedSHSection, isSH]);
-
-// Global pool = faculty with no year assigned
-  const globalFacultyPool = useMemo(() => {
-    return facultyList.filter(f => !f.year || f.year === '');
-  }, [facultyList]);
-
-  // Assigned faculty = faculty with year assigned
-  const assignedFaculty = useMemo(() => {
-    return facultyList.filter(f => f.year && f.year !== '');
-  }, [facultyList]);
+  }, [assignedFaculty, selectedYear, selectedBranch, selectedSection, selectedSHSection, isSH]);
 
   const facultyByBranch = useMemo(() => {
     if (!isSH) return {};
