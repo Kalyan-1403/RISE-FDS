@@ -50,6 +50,7 @@ const HoDDashboard = () => {
   // New publish modal state (separate from configure panel)
   const [publishYear, setPublishYear] = useState('');
   const [publishSection, setPublishSection] = useState('');
+const [publishSem, setPublishSem] = useState('');
   const [publishStudents, setPublishStudents] = useState('');
   // Download section state
   const [downloadYear, setDownloadYear] = useState('');
@@ -245,12 +246,7 @@ const handleDeleteAccount = async () => {
       return;
     }
 
-    const codeRegex = /^[A-Za-z0-9]+$/;
-    if (!codeRegex.test(trimmedCode)) {
-      alert('⚠️ Subject Code must be alphanumeric only');
-      return;
-    }
-
+   
     const facultyData = {
       name: trimmedName,
       subject: '',
@@ -351,6 +347,7 @@ const openPublishModal = () => {
     setPublishYear(isSH ? 'I' : (selectedYear || ''));
     setPublishSection('');
     setPublishStudents('');
+    setPublishSem('');
     setSelectedFacultyIds([]);
     setSlotNumber(1);
     setSlotStartDate('');
@@ -384,8 +381,8 @@ const openPublishModal = () => {
       alert('⚠️ Please enter the total number of students for this section');
       return;
     }
-    if (!selectedSem) {
-      alert('⚠️ Please select a Semester in the Configure Session panel first');
+    if (!publishSem) {
+      alert('⚠️ Please select a Semester');
       return;
     }
     if (!slotStartDate || !slotEndDate) {
@@ -408,7 +405,7 @@ const openPublishModal = () => {
         dept: currentUser.department,
         branch: targetBranch,
         year: targetYear,
-        sem: selectedSem,
+        sem: publishSem,
         sec: publishSection,
         slot: slotNumber,
         slotStartDate: slotStartDate,
@@ -663,103 +660,22 @@ console.error('PDF error:', err);
               </div>
 
               <div className="config-form">
-                <div className="form-row">
-                  {isSH ? (
-                    <div className="form-field">
-                      <label>Branch</label>
-                      <select
-                        value={selectedBranch}
-                        onChange={(e) =>
-                          setSelectedBranch(
-                            e.target.value
-                          )
-                        }
-                      >
-                        <option value="">
-                          Select
-                        </option>
-                        {availableBranches.map(
-                          (b) => (
-                            <option
-                              key={b}
-                              value={b}
-                            >
-                              {b}
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </div>
-                  ) : (
-                    <div className="form-field">
-                      <label>Year</label>
-                      <select
-                        value={selectedYear}
-                        onChange={(e) =>
-                          setSelectedYear(
-                            e.target.value
-                          )
-                        }
-                      >
-                        <option value="">
-                          Select
-                        </option>
-                        {availableYears.map((y) => (
-                          <option
-                            key={y}
-                            value={y}
-                          >
-                            {y}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  <div className="form-field">
-                    <label>Semester</label>
-                    <select
-                      value={selectedSem}
-                      onChange={(e) =>
-                        setSelectedSem(
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="">
-                        Select
-                      </option>
-                      {SEMESTERS.map((s) => (
-                        <option
-                          key={s}
-                          value={s}
-                        >
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="divider" />
-
-<div className="panel-header">
+                <div className="panel-header">
                   <h3>👥 Faculty Pool</h3>
                 </div>
-                <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 8px 0' }}>
-                  Add faculty here first, then assign them to years/sections from the faculty list.
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '-12px 0 12px 0' }}>
+                  Add faculty to the pool first, then assign them to specific years and sections.
                 </p>
 
                 <div className="faculty-form">
                   <input
-                    className="input-small"
                     type="text"
-                    placeholder="Code"
-                    value={newFaculty.code}
+                    placeholder="Faculty Name"
+                    value={newFaculty.name}
                     onChange={(e) =>
                       setNewFaculty((prev) => ({
                         ...prev,
-                        code: e.target.value,
+                        name: e.target.value,
                       }))
                     }
                   />
@@ -1048,6 +964,19 @@ console.error('PDF error:', err);
                 {/* ── LEFT PANEL ── */}
                 <div style={{ padding: '20px', borderRight: '2px solid #e2e8f0', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>📋 Section & Slot Details</h3>
+
+	{/* Semester */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Semester</label>
+                    <select
+                      value={publishSem}
+                      onChange={(e) => setPublishSem(e.target.value)}
+                      style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}
+                    >
+                      <option value="">Select Semester</option>
+                      {SEMESTERS.map(s => <option key={s} value={s}>Semester {s}</option>)}
+                    </select>
+                  </div>
 
                   {/* Year */}
                   {!isSH && (
@@ -1387,8 +1316,8 @@ console.error('PDF error:', err);
                             <input
                               type="text"
                               placeholder="e.g. A, B, CSE-DS"
-                              value={sectionForm.key === formKey ? sectionForm.sectionName : ''}
-                              onChange={e => setSectionForm(f => ({ ...f, key: formKey, sectionName: e.target.value, year: isSH ? 'I' : key, branch: isSH ? key : '' }))}
+                              value={sectionForm.key === formKey ? (sectionForm.sectionName || '') : ''}
+                          onChange={e => setSectionForm({ key: formKey, sectionName: e.target.value, strength: sectionForm.key === formKey ? (sectionForm.strength || '') : '', year: isSH ? 'I' : key, branch: isSH ? key : '', applyAll: sectionForm.key === formKey ? (sectionForm.applyAll || false) : false })}
                               style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }}
                             />
                           </div>
@@ -1397,8 +1326,8 @@ console.error('PDF error:', err);
                             <input
                               type="number"
                               placeholder="0"
-                              value={sectionForm.key === formKey ? sectionForm.strength : ''}
-                              onChange={e => setSectionForm(f => ({ ...f, key: formKey, strength: e.target.value }))}
+                             value={sectionForm.key === formKey ? (sectionForm.strength || '') : ''}
+                          onChange={e => setSectionForm(f => ({ ...f, key: formKey, strength: e.target.value }))}
                               style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }}
                             />
                           </div>
@@ -1407,8 +1336,8 @@ console.error('PDF error:', err);
                               <input
                                 type="checkbox"
                                 id={`applyAll_${key}`}
-                                checked={sectionForm.key === formKey ? !!sectionForm.applyAll : false}
-                                onChange={e => setSectionForm(f => ({ ...f, key: formKey, applyAll: e.target.checked }))}
+                                checked={!!(sectionForm.key === formKey && sectionForm.applyAll)}
+                              onChange={e => setSectionForm(f => ({ ...f, key: formKey, applyAll: e.target.checked }))}
                                 style={{ accentColor: '#667eea', width: '14px', height: '14px' }}
                               />
                               <label htmlFor={`applyAll_${key}`} style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', cursor: 'pointer' }}>

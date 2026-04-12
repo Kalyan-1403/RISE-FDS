@@ -153,11 +153,12 @@
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 420px 1fr;
+  grid-template-columns: 380px 1fr;
   gap: 24px;
-  align-items: start;
-  margin-bottom: 40px; /* Add space for developer credit */
+  align-items: stretch;
+  margin-bottom: 40px;
 }
+
 /* Panel Base */
 
 .panel {
@@ -186,13 +187,12 @@
 /* Config Panel */
 
 .config-panel {
-  height: calc(100vh - 220px);
-  max-height: calc(100vh - 220px);
+  height: calc(100vh - 140px);
+  max-height: calc(100vh - 140px);
   overflow-y: auto;
   overflow-x: hidden;
   align-self: start;
 }
-
 .config-panel::-webkit-scrollbar {
   width: 6px;
 }
@@ -213,8 +213,8 @@
 
 /* List Panel - FIXED HEIGHT */
 .list-panel {
-  height: calc(100vh - 220px); /* Fixed height based on viewport */
-  max-height: 650px; /* Maximum height */
+  height: calc(100vh - 140px);
+  max-height: calc(100vh - 140px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
