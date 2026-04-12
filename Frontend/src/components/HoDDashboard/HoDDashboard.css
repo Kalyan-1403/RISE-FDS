@@ -1127,4 +1127,18 @@
   .faculty-info { flex-direction: column; }
 }
 
-
+/* Section modal scrollbar styling */
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+.modal-body::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.modal-body::-webkit-scrollbar-thumb {
+  background: #667eea;
+  border-radius: 4px;
+}
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: #764ba2;
+}

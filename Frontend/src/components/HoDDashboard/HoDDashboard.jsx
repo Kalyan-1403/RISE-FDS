@@ -1421,7 +1421,7 @@ console.error('PDF error:', err);
         <div className="modal-overlay" onClick={() => setShowSectionModal(false)}>
           <div
             className="modal-content"
-            style={{ maxWidth: '720px', width: '95%', maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            style={{ maxWidth: '720px', width: '95%', height: '88vh', maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', borderRadius: '16px' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="modal-header">
@@ -1433,7 +1433,7 @@ console.error('PDF error:', err);
               </p>
             </div>
 
-            <div className="modal-body" style={{ overflowY: 'auto', flex: 1 }}>
+           <div className="modal-body" style={{ overflowY: 'auto', flex: 1, padding: '20px', scrollbarWidth: 'thin', scrollbarColor: '#667eea #f1f5f9' }}>
               {/* Loop over each year/branch key */}
               {(isSH ? availableBranches : availableYears).map(key => (
                 <div key={key} style={{ marginBottom: '24px', border: '2px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden' }}>
@@ -1593,7 +1593,7 @@ console.error('PDF error:', err);
               ))}
             </div>
 
-            <div className="modal-footer">
+            <div className="modal-footer" style={{ borderTop: '2px solid #e2e8f0', padding: '14px 20px', flexShrink: 0, background: '#f8fafc' }}>
               <button type="button" className="btn-confirm" onClick={() => setShowSectionModal(false)}>
                 ✅ Done
               </button>
