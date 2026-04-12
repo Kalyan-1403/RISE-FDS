@@ -63,7 +63,7 @@ const [sections, setSections] = useState([]);
 const [selectedSection, setSelectedSection] = useState(null);
 const [selectedSHSection, setSelectedSHSection] = useState(null);
 const [showSectionModal, setShowSectionModal] = useState(false);
-const [sectionForm, setSectionForm] = useState({ year: 'II', sectionName: '', strength: '' });
+const [sectionForm, setSectionForm] = useState({ key: null, year: 'II', sectionName: '', strength: '', applyAll: false, branch: '' });
 const [sectionError, setSectionError] = useState('');
 const [editingStrengthId, setEditingStrengthId] = useState(null);
 const [editingStrengthVal, setEditingStrengthVal] = useState('');
@@ -698,7 +698,7 @@ console.error('PDF error:', err);
                         <option value="">
                           Select
                         </option>
-                        {YEARS.map((y) => (
+                        {availableYears.map((y) => (
                           <option
                             key={y}
                             value={y}
@@ -807,6 +807,13 @@ console.error('PDF error:', err);
                 </div>
 
                 <div className="divider" />
+		<button
+                  type="button"
+                  onClick={() => { setSectionError(''); setSectionForm({ key: null, year: 'II', sectionName: '', strength: '', applyAll: false, branch: '' }); setShowSectionModal(true); }}
+                  style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', marginBottom: '8px' }}
+                >
+                  🗂️ Manage Class Sections
+                </button>
 
                 <button
                   type="button"
@@ -1240,21 +1247,31 @@ console.error('PDF error:', err);
                         style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}
                       >
                         <option value="">Select Year</option>
-                        {YEARS.map(y => <option key={y} value={y}>{y} Year</option>)}
+                        {availableYears.map(y => <option key={y} value={y}>{y} Year</option>)}
                       </select>
                     </div>
                   )}
 
-                  {/* Section */}
+                  {/* Section — filtered by selected year */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Section</label>
                     <select
                       value={publishSection}
-                      onChange={(e) => setPublishSection(e.target.value)}
+                      onChange={(e) => {
+                        setPublishSection(e.target.value);
+                        // Auto-fill student count from section data
+                        const key = isSH ? selectedBranch : publishYear;
+                        const sec = (sectionsByKey[key] || []).find(s => s.sectionName === e.target.value);
+                        if (sec && sec.strength) setPublishStudents(String(sec.strength));
+                      }}
                       style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}
                     >
                       <option value="">Select Section</option>
-                      {availableSections.map(s => <option key={s} value={s}>Section {s}</option>)}
+                      {(sectionsByKey[isSH ? selectedBranch : publishYear] || []).map(s => (
+                        <option key={s.id} value={s.sectionName}>
+                          {s.sectionName} {s.strength ? `(${s.strength} students)` : ''}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -1399,144 +1416,187 @@ console.error('PDF error:', err);
             </div>
           </div>
         )}
-      {/* ── Manage Sections Modal ── */}
+      {/* ── Manage Sections Modal (Central Setup) ── */}
       {showSectionModal && (
         <div className="modal-overlay" onClick={() => setShowSectionModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: '720px', width: '95%', maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}
+          >
             <div className="modal-header">
-              <h2>Manage Sections</h2>
-              <p>Add or remove sections per year. Click 💪 to edit strength inline.</p>
+              <h2>🗂️ Manage Class Sections</h2>
+              <p>
+                {isSH
+                  ? 'Add sections under each department for 1st year students.'
+                  : `Add sections for each year. ${TWO_YEAR_DEPTS.includes(currentUser?.department) ? 'Years I & II only.' : 'Years II, III & IV.'}`}
+              </p>
             </div>
-            <div className="modal-body">
-                            {isSH ? (
-                <div style={{ marginBottom: '14px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#636e72', display: 'block', marginBottom: '6px' }}>Department (Branch)</label>
-                  <select
-                    value={sectionForm.branch || ''}
-                    onChange={e => setSectionForm(f => ({ ...f, branch: e.target.value, year: 'I' }))}
-                    style={{ width: '100%', padding: '9px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', background: '#f8fafc' }}
-                  >
-                    <option value="">Select Department</option>
-                    {availableBranches.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                </div>
-              ) : (
-                <div style={{ marginBottom: '14px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#636e72', display: 'block', marginBottom: '6px' }}>Select Year</label>
-                  <select
-                    value={sectionForm.year}
-                    onChange={e => setSectionForm(f => ({ ...f, year: e.target.value }))}
-                    style={{ width: '100%', padding: '9px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', background: '#f8fafc' }}
-                  >
-                    {availableYears.map(yr => <option key={yr} value={yr}>Year {yr}</option>)}
-                  </select>
-                </div>
-              )}
 
-                            {(sectionsByKey[isSH ? (sectionForm.branch || '') : sectionForm.year] || []).length > 0 && (
-                <div style={{ marginBottom: '16px' }}>
-                                    <p style={{ fontWeight: '700', fontSize: '13px', marginBottom: '8px', color: '#2d3436' }}>
-                    Existing Sections — {isSH ? `${sectionForm.branch} Dept` : `Year ${sectionForm.year}`}
-                  </p>
-                  {(sectionsByKey[isSH ? (sectionForm.branch || '') : sectionForm.year] || []).map(s => (
-                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: '#f8fafc', borderRadius: '10px', marginBottom: '8px', border: '2px solid #e2e8f0' }}>
-                      <span style={{ fontWeight: '800', color: '#ff6b9d', flex: 1 }}>{s.sectionName}</span>
-                      {editingStrengthId === s.id ? (
-                        <input
-                          type="number"
-                          value={editingStrengthVal}
-                          onChange={e => setEditingStrengthVal(e.target.value)}
-                          style={{ width: '70px', padding: '4px 8px', border: '2px solid #ff6b9d', borderRadius: '6px', fontWeight: '700', fontSize: '13px' }}
-                          autoFocus
-                        />
-                      ) : (
-                        <span
-                          title="Click to edit strength"
-                          onClick={() => { setEditingStrengthId(s.id); setEditingStrengthVal(String(s.strength)); }}
-                          style={{ cursor: 'pointer', padding: '4px 10px', background: '#ffeaa7', borderRadius: '6px', fontWeight: '700', fontSize: '13px' }}
-                        >
-                          💪 {s.strength}
-                        </span>
-                      )}
-                      {editingStrengthId === s.id && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await sectionAPI.update(s.id, { strength: Number(editingStrengthVal) });
-                            setSections(prev => prev.map(x => x.id === s.id ? { ...x, strength: Number(editingStrengthVal) } : x));
-                            setEditingStrengthId(null);
-                          }}
-                          style={{ padding: '4px 10px', background: '#48dbfb', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer' }}
-                        >✓</button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!window.confirm(`Delete section "${s.sectionName}"?`)) return;
-                          await sectionAPI.delete(s.id);
-                          setSections(prev => prev.filter(x => x.id !== s.id));
-                          if (isSH) { if (selectedSHSection === s.sectionName) setSelectedSHSection(null); }
-else { if (selectedSection === s.sectionName) setSelectedSection(null); }
-                        }}
-                        style={{ padding: '4px 10px', background: '#ff6b9d', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer' }}
-                      >🗑</button>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="modal-body" style={{ overflowY: 'auto', flex: 1 }}>
+              {/* Loop over each year/branch key */}
+              {(isSH ? availableBranches : availableYears).map(key => (
+                <div key={key} style={{ marginBottom: '24px', border: '2px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden' }}>
 
-              <div style={{ padding: '14px', background: '#f0fff4', borderRadius: '10px', border: '2px solid #48dbfb' }}>
-                <p style={{ fontWeight: '700', fontSize: '13px', marginBottom: '10px', color: '#2d3436' }}>Add New Section</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: '8px', marginBottom: '10px' }}>
-                  <div>
-                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#636e72' }}>Section Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. A, B, CSE-DS, AI&ML"
-                      value={sectionForm.sectionName}
-                      onChange={e => setSectionForm(f => ({ ...f, sectionName: e.target.value }))}
-                      style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
-                    />
+                  {/* Section group header */}
+                  <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'white', fontWeight: '800', fontSize: '14px' }}>
+                      {isSH ? `📖 ${key} Department` : `📅 Year ${key}`}
+                    </span>
+                    <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '12px', fontWeight: '600' }}>
+                      {(sectionsByKey[key] || []).length} section{(sectionsByKey[key] || []).length !== 1 ? 's' : ''}
+                    </span>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#636e72' }}>Strength</label>
-                    <input
-                      type="number"
-                      placeholder="0"
-                      value={sectionForm.strength}
-                      onChange={e => setSectionForm(f => ({ ...f, strength: e.target.value }))}
-                      style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
-                    />
+
+                  <div style={{ padding: '14px 16px' }}>
+                    {/* Existing sections */}
+                    {(sectionsByKey[key] || []).length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+                        {(sectionsByKey[key] || []).map(s => (
+                          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f1f5f9', borderRadius: '20px', border: '2px solid #e2e8f0' }}>
+                            <span style={{ fontWeight: '800', color: '#1e293b', fontSize: '13px' }}>{s.sectionName}</span>
+                            {editingStrengthId === s.id ? (
+                              <>
+                                <input
+                                  type="number"
+                                  value={editingStrengthVal}
+                                  onChange={e => setEditingStrengthVal(e.target.value)}
+                                  style={{ width: '60px', padding: '2px 6px', border: '2px solid #667eea', borderRadius: '6px', fontWeight: '700', fontSize: '12px' }}
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await sectionAPI.update(s.id, { strength: Number(editingStrengthVal) });
+                                    setSections(prev => prev.map(x => x.id === s.id ? { ...x, strength: Number(editingStrengthVal) } : x));
+                                    setEditingStrengthId(null);
+                                  }}
+                                  style={{ padding: '2px 8px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
+                                >✓</button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingStrengthId(null)}
+                                  style={{ padding: '2px 6px', background: '#94a3b8', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
+                                >✕</button>
+                              </>
+                            ) : (
+                              <span
+                                title="Click to edit strength"
+                                onClick={() => { setEditingStrengthId(s.id); setEditingStrengthVal(String(s.strength || 0)); }}
+                                style={{ cursor: 'pointer', padding: '2px 8px', background: '#fef9c3', borderRadius: '6px', fontWeight: '700', fontSize: '12px', color: '#854d0e' }}
+                              >
+                                {s.strength || 0} 👤
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!window.confirm(`Delete section "${s.sectionName}"?`)) return;
+                                await sectionAPI.delete(s.id);
+                                setSections(prev => prev.filter(x => x.id !== s.id));
+                                if (isSH) { if (selectedSHSection === s.sectionName) setSelectedSHSection(null); }
+                                else { if (selectedSection === s.sectionName) setSelectedSection(null); }
+                              }}
+                              style={{ padding: '2px 6px', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' }}
+                            >🗑</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add new section inline */}
+                    {(() => {
+                      const formKey = `${key}`;
+                      return (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                          <div style={{ flex: '2', minWidth: '120px' }}>
+                            <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px' }}>Section Name</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. A, B, CSE-DS"
+                              value={sectionForm.key === formKey ? sectionForm.sectionName : ''}
+                              onChange={e => setSectionForm(f => ({ ...f, key: formKey, sectionName: e.target.value, year: isSH ? 'I' : key, branch: isSH ? key : '' }))}
+                              style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                          <div style={{ flex: '1', minWidth: '80px' }}>
+                            <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px' }}>Strength</label>
+                            <input
+                              type="number"
+                              placeholder="0"
+                              value={sectionForm.key === formKey ? sectionForm.strength : ''}
+                              onChange={e => setSectionForm(f => ({ ...f, key: formKey, strength: e.target.value }))}
+                              style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                          {!isSH && (
+                            <div style={{ flex: '1.5', minWidth: '120px', display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '2px' }}>
+                              <input
+                                type="checkbox"
+                                id={`applyAll_${key}`}
+                                checked={sectionForm.key === formKey ? !!sectionForm.applyAll : false}
+                                onChange={e => setSectionForm(f => ({ ...f, key: formKey, applyAll: e.target.checked }))}
+                                style={{ accentColor: '#667eea', width: '14px', height: '14px' }}
+                              />
+                              <label htmlFor={`applyAll_${key}`} style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', cursor: 'pointer' }}>
+                                Add to all years
+                              </label>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setSectionError('');
+                              const name = (sectionForm.key === formKey ? sectionForm.sectionName : '').trim();
+                              const strength = Number(sectionForm.key === formKey ? sectionForm.strength : 0) || 0;
+                              const applyAll = sectionForm.key === formKey ? !!sectionForm.applyAll : false;
+                              if (!name) { setSectionError('Section name required'); return; }
+
+                              try {
+                                if (!isSH && applyAll) {
+                                  // Add to all years with same name but individual strength
+                                  const newSections = [];
+                                  for (const yr of availableYears) {
+                                    const res = await sectionAPI.create({
+                                      year: yr,
+                                      branch: '',
+                                      sectionName: name,
+                                      strength: strength,
+                                    });
+                                    newSections.push(res.data.section);
+                                  }
+                                  setSections(prev => [...prev, ...newSections]);
+                                } else {
+                                  const res = await sectionAPI.create({
+                                    year: isSH ? 'I' : key,
+                                    branch: isSH ? key : '',
+                                    sectionName: name,
+                                    strength: strength,
+                                  });
+                                  setSections(prev => [...prev, res.data.section]);
+                                }
+                                setSectionForm(f => ({ ...f, key: null, sectionName: '', strength: '', applyAll: false }));
+                              } catch (err) {
+                                setSectionError(err.response?.data?.error || 'Failed to add section');
+                              }
+                            }}
+                            style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      );
+                    })()}
+                    {sectionError && <p style={{ color: '#ef4444', fontSize: '12px', fontWeight: '700', marginTop: '6px' }}>{sectionError}</p>}
                   </div>
                 </div>
-                {sectionError && <p style={{ color: '#ff6b9d', fontSize: '12px', fontWeight: '700', marginBottom: '8px' }}>{sectionError}</p>}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setSectionError('');
-                                        if (isSH && !sectionForm.branch) { setSectionError('Select a department first'); return; }
-                    if (!sectionForm.sectionName.trim()) { setSectionError('Section name is required'); return; }
-                    try {
-                                            const res = await sectionAPI.create({
-                        year: isSH ? 'I' : sectionForm.year,
-                        branch: isSH ? (sectionForm.branch || '') : '',
-                        sectionName: sectionForm.sectionName.trim(),
-                        strength: Number(sectionForm.strength) || 0,
-                      });
-                      setSections(prev => [...prev, res.data.section]);
-                      setSectionForm(f => ({ ...f, sectionName: '', strength: '' }));
-                    } catch (err) {
-                      setSectionError(err.response?.data?.error || 'Failed to add section');
-                    }
-                  }}
-                  style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #ff6b9d, #feca57)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer' }}
-                >
-                  + Add Section
-                </button>
-              </div>
+              ))}
             </div>
+
             <div className="modal-footer">
-              <button type="button" className="btn-modal-cancel" onClick={() => setShowSectionModal(false)}>Done</button>
+              <button type="button" className="btn-confirm" onClick={() => setShowSectionModal(false)}>
+                ✅ Done
+              </button>
             </div>
           </div>
         </div>
