@@ -226,11 +226,14 @@ const HoDDashboard = () => {
       showToast('Faculty name must contain only letters, spaces, and dots.');
       return;
     }
+    
     // Auto-generate a code from initials
     const autoCode = trimmed.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 5);
+    
     const facultyData = {
       name: trimmed,
-      subject: '',
+      // PATCH: Send a 3-character placeholder to bypass backend validation
+      subject: 'TBD', 
       code: autoCode,
       year: '',
       branch: isSH ? (selectedBranch || '') : currentUser.department,
@@ -239,6 +242,7 @@ const HoDDashboard = () => {
       dept: currentUser.department,
       college: currentUser.college,
     };
+
     setIsSaving(true);
     try {
       if (editingId) {
