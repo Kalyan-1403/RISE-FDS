@@ -1,9 +1,4 @@
-import React, {
-  useState,
-  useMemo,
-  useEffect,
-  useCallback,
-} from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import dataService from '../../services/dataService.js';
@@ -16,86 +11,111 @@ import { generateFacultyExcel } from '../../utils/excelGenerator';
 const YEARS = ['II', 'III', 'IV'];
 const SEMESTERS = ['I', 'II'];
 const TWO_YEAR_DEPTS = ['M.TECH', 'MBA', 'MCA'];
-
-// All departments per college (excluding S&H itself — used by S&H HoD to pick branches)
 const BRANCHES_BY_COLLEGE = {
   Gandhi: ['CSE', 'ECE'],
   Prakasam: ['CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'MBA', 'MCA', 'M.TECH'],
 };
 
+/* ─────────────────────────────────────────────
+   Toast helper
+───────────────────────────────────────────── */
+function Toast({ toast, onClose }) {
+  if (!toast.show) return null;
+  return (
+    <div className={`hod-toast hod-toast--${toast.type}`}>
+      <span className="toast-icon">
+        {toast.type === 'success' ? '✅' : toast.type === 'info' ? 'ℹ️' : '⚠️'}
+      </span>
+      <span className="toast-msg">{toast.message}</span>
+      <button className="toast-close" onClick={onClose}>✕</button>
+    </div>
+  );
+}
+
 const HoDDashboard = () => {
   const navigate = useNavigate();
   const { user: currentUser, logoutUser } = useAuth();
 
+  /* ── Core ── */
+  const [facultyList, setFacultyList] = useState([]);
+  const [allBatches, setAllBatches] = useState([]);
+
+  /* ── Faculty pool form ── */
+  const [newFacultyName, setNewFacultyName] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  /* ── Section state ── */
+  const [sections, setSections] = useState([]);
   const [selectedYear, setSelectedYear] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
-  const [selectedSem, setSelectedSem] = useState('');
-  const [selectedSec, setSelectedSec] = useState('');
-  const [facultyList, setFacultyList] = useState([]);
-  const [newFaculty, setNewFaculty] = useState({
-    name: '',
-    subject: '',
-    code: '',
-  });
-  const [editingId, setEditingId] = useState(null);
+  const [selectedSection, setSelectedSection] = useState(null);
+  const [selectedSHSection, setSelectedSHSection] = useState(null);
+
+  /* ── Section editing (sidebar quick edit) ── */
+  const [editingSection, setEditingSection] = useState(null); // { id, name, strength }
+  const [editSectionName, setEditSectionName] = useState('');
+  const [editSectionStrength, setEditSectionStrength] = useState('');
+
+  /* ── Manage Sections Modal ── */
+  const [showSectionModal, setShowSectionModal] = useState(false);
+  const [sectionForm, setSectionForm] = useState({ key: null, sectionName: '', strength: '', applyAll: false });
+  const [sectionError, setSectionError] = useState('');
+  // strength-only inline edit inside modal
+  const [editingStrengthId, setEditingStrengthId] = useState(null);
+  const [editingStrengthVal, setEditingStrengthVal] = useState('');
+
+  /* ── Assign Faculty Modal (multi-step) ── */
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignStep, setAssignStep] = useState(1);
+  const [assignYear, setAssignYear] = useState('');
+  const [assignSem, setAssignSem] = useState('');
+  const [assignSubjectCount, setAssignSubjectCount] = useState(1);
+  const [assignSubjectNames, setAssignSubjectNames] = useState(['']);
+  const [assignRows, setAssignRows] = useState([]); // [{subjectName, section, facultyId}]
+  const [isAssigning, setIsAssigning] = useState(false);
+
+  /* ── Publish Modal ── */
   const [showModal, setShowModal] = useState(false);
-  const [selectedFacultyIds, setSelectedFacultyIds] = useState([]);
-  const [allBatches, setAllBatches] = useState([]);
+  const [publishStep, setPublishStep] = useState(1); // 1: config, 2: review
+  const [publishYear, setPublishYear] = useState('');
+  const [publishSem, setPublishSem] = useState('');
+  const [publishSection, setPublishSection] = useState('');
+  const [publishStudents, setPublishStudents] = useState('');
   const [slotNumber, setSlotNumber] = useState(1);
   const [slotStartDate, setSlotStartDate] = useState('');
   const [slotEndDate, setSlotEndDate] = useState('');
+  const [selectedFacultyIds, setSelectedFacultyIds] = useState([]);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [totalStudents, setTotalStudents] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  // New publish modal state (separate from configure panel)
-  const [publishYear, setPublishYear] = useState('');
-  const [publishSection, setPublishSection] = useState('');
-const [publishSem, setPublishSem] = useState('');
-  const [publishStudents, setPublishStudents] = useState('');
-  // Download section state
+
+  /* ── Download ── */
   const [downloadYear, setDownloadYear] = useState('');
   const [downloadSection, setDownloadSection] = useState('');
+
+  /* ── Delete account ── */
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
   const [deleteAccountError, setDeleteAccountError] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
-// Section management
-const [sections, setSections] = useState([]);
-const [selectedSection, setSelectedSection] = useState(null);
-const [selectedSHSection, setSelectedSHSection] = useState(null);
-const [showSectionModal, setShowSectionModal] = useState(false);
-const [sectionForm, setSectionForm] = useState({ key: null, year: 'II', sectionName: '', strength: '', applyAll: false, branch: '' });
-const [sectionError, setSectionError] = useState('');
-const [editingStrengthId, setEditingStrengthId] = useState(null);
-const [editingStrengthVal, setEditingStrengthVal] = useState('');
-// Global faculty assignment state
-const [showAssignModal, setShowAssignModal] = useState(false);
-const [assigningFaculty, setAssigningFaculty] = useState(null);
-const [assignYear, setAssignYear] = useState('');
-const [assignSem, setAssignSem] = useState('');
-const [assignSection, setAssignSection] = useState('');
-const [assignSubject, setAssignSubject] = useState('');
-const [isAssigning, setIsAssigning] = useState(false);
 
-  // Load data from backend
+  /* ── Toast ── */
+  const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
+  const showToast = useCallback((message, type = 'error') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4000);
+  }, []);
+
+  /* ────────────────────────────────────────
+     Data loading
+  ──────────────────────────────────────── */
   const loadDashboardData = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const dashData =
-        await dataService.getHoDDashboard();
-      if (
-        dashData.faculty &&
-        dashData.faculty.length > 0
-      ) {
-        setFacultyList(dashData.faculty);
-      }
-      if (dashData.batches) {
-        setAllBatches(dashData.batches);
-      }
+      const dashData = await dataService.getHoDDashboard();
+      if (dashData.faculty?.length > 0) setFacultyList(dashData.faculty);
+      if (dashData.batches) setAllBatches(dashData.batches);
     } catch (e) {
-      console.warn(
-        'Backend unavailable, using cached data'
-      );
+      console.warn('Backend unavailable, using cached data');
     }
   }, [currentUser]);
 
@@ -110,44 +130,33 @@ const [isAssigning, setIsAssigning] = useState(false);
   }, [currentUser]);
 
   useEffect(() => {
-    if (
-      !currentUser ||
-      currentUser.role !== 'hod'
-    ) {
+    if (!currentUser || currentUser.role !== 'hod') {
       navigate('/', { replace: true });
       return;
     }
     loadDashboardData();
     loadSections();
 
-
-    // Refetch when tab regains focus
+    // Live refresh every 30s + on focus
+    const interval = setInterval(loadDashboardData, 30000);
     const handleFocus = () => loadDashboardData();
     window.addEventListener('focus', handleFocus);
-
     return () => {
-      window.removeEventListener(
-        'focus',
-        handleFocus
-      );
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
     };
-    }, [currentUser, navigate, loadDashboardData, loadSections]);
+  }, [currentUser, navigate, loadDashboardData, loadSections]);
 
-  const isSH = useMemo(() => {
-    return currentUser?.department === 'S&H';
-  }, [currentUser]);
+  /* ────────────────────────────────────────
+     Memos
+  ──────────────────────────────────────── */
+  const isSH = useMemo(() => currentUser?.department === 'S&H', [currentUser]);
 
-      const availableYears = useMemo(() => {
+  const availableYears = useMemo(() => {
     if (!currentUser) return YEARS;
-    if (TWO_YEAR_DEPTS.includes(currentUser.department)) return ['I', 'II'];
-    return YEARS;
+    return TWO_YEAR_DEPTS.includes(currentUser.department) ? ['I', 'II'] : YEARS;
   }, [currentUser]);
 
-  const availableSections = useMemo(() => {
-    return sections.map(s => s.sectionName);
-  }, [sections]);
-
-    // For S&H: keyed by branch. For others: keyed by year.
   const sectionsByKey = useMemo(() => {
     const map = {};
     sections.forEach(s => {
@@ -159,98 +168,70 @@ const [isAssigning, setIsAssigning] = useState(false);
   }, [sections, isSH]);
 
   const availableBranches = useMemo(() => {
-    if (!currentUser || !isSH) return [];
-    return (
-      BRANCHES_BY_COLLEGE[currentUser.college] ||
-      []
-    );
+    if (!isSH) return [];
+    return BRANCHES_BY_COLLEGE[currentUser?.college] || [];
   }, [currentUser, isSH]);
 
-      // Global pool = faculty with no year assigned
-  const globalFacultyPool = useMemo(() => {
-    return facultyList.filter(f => !f.year || f.year === '');
-  }, [facultyList]);
-
-  // Assigned faculty = faculty with year assigned
-  const assignedFaculty = useMemo(() => {
-    return facultyList.filter(f => f.year && f.year !== '');
-  }, [facultyList]);
+  const globalFacultyPool = useMemo(
+    () => facultyList.filter(f => !f.year || f.year === ''),
+    [facultyList]
+  );
+  const assignedFaculty = useMemo(
+    () => facultyList.filter(f => f.year && f.year !== ''),
+    [facultyList]
+  );
 
   const filteredFaculty = useMemo(() => {
     if (isSH) {
       if (!selectedBranch) return [];
-      let list = assignedFaculty.filter((f) => f.branch === selectedBranch);
-      if (selectedSHSection) {
-        list = list.filter((f) => f.section === selectedSHSection || f.sec === selectedSHSection);
-      }
-      return list;
-    } else {
-      let list = selectedYear
-        ? assignedFaculty.filter((f) => f.year === selectedYear)
-        : assignedFaculty;
-      if (selectedSection) {
-        list = list.filter((f) => f.section === selectedSection || f.sec === selectedSection);
-      }
+      let list = assignedFaculty.filter(f => f.branch === selectedBranch);
+      if (selectedSHSection) list = list.filter(f => f.section === selectedSHSection || f.sec === selectedSHSection);
       return list;
     }
+    let list = selectedYear ? assignedFaculty.filter(f => f.year === selectedYear) : assignedFaculty;
+    if (selectedSection) list = list.filter(f => f.section === selectedSection || f.sec === selectedSection);
+    return list;
   }, [assignedFaculty, selectedYear, selectedBranch, selectedSection, selectedSHSection, isSH]);
 
-  const facultyByBranch = useMemo(() => {
-    if (!isSH) return {};
-    const grouped = {};
-    availableBranches.forEach((branch) => {
-      grouped[branch] = facultyList.filter(
-        (f) => f.branch === branch
-      );
+  // Only sections with complete responses (for download - Req 9)
+  const downloadSections = useMemo(() => {
+    if (!downloadYear) return [];
+    const secs = sectionsByKey[downloadYear] || [];
+    return secs.filter(s => {
+      const batch = allBatches.find(b => b.year === downloadYear && (b.sec === s.sectionName || b.section === s.sectionName));
+      return batch && batch.totalStudents > 0 && (batch.responseCount || 0) >= batch.totalStudents;
     });
-    return grouped;
-  }, [facultyList, availableBranches, isSH]);
+  }, [downloadYear, sectionsByKey, allBatches]);
 
-  const handleLogout = () => {
-    logoutUser();
-    navigate('/', { replace: true });
-  };
+  // Faculty for selected publish section (step 2)
+  const publishSectionFaculty = useMemo(() => {
+    return assignedFaculty.filter(f => {
+      const matchBranch = isSH ? f.branch === selectedBranch : f.year === publishYear;
+      const matchSem = f.sem === publishSem || f.semester === publishSem;
+      const matchSec = f.section === publishSection || f.sec === publishSection;
+      return matchBranch && matchSem && matchSec;
+    });
+  }, [assignedFaculty, isSH, selectedBranch, publishYear, publishSem, publishSection]);
 
-const handleDeleteAccount = async () => {
-    if (!deleteAccountPassword) {
-      setDeleteAccountError('Please enter your password to confirm');
-      return;
-    }
-    setIsDeletingAccount(true);
-    setDeleteAccountError('');
-    try {
-      await dataService.deleteAccount(deleteAccountPassword);
-      logoutUser();
-      navigate('/', { replace: true });
-    } catch (err) {
-      setDeleteAccountError(err.message || 'Failed to delete account');
-    } finally {
-      setIsDeletingAccount(false);
-    }
-  };
-  
-
-  // Add faculty to global pool (no year/sem/sec)
+  /* ────────────────────────────────────────
+     Handlers — Faculty Pool
+  ──────────────────────────────────────── */
   const addOrUpdateFaculty = async () => {
-    const trimmedName = newFaculty.name.trim();
-    const trimmedCode = newFaculty.code.trim();
-
-    if (!trimmedName || !trimmedCode) {
-      alert('⚠️ Enter Code and Name');
+    const trimmed = newFacultyName.trim();
+    if (!trimmed) {
+      showToast('Faculty name cannot be empty. Please enter a name.');
       return;
     }
-
-    const nameRegex = /^[A-Za-z\s.]+$/;
-    if (!nameRegex.test(trimmedName)) {
-      alert('⚠️ Faculty Name must contain only letters, spaces, and dots');
+    if (!/^[A-Za-z\s.]+$/.test(trimmed)) {
+      showToast('Faculty name must contain only letters, spaces, and dots.');
       return;
     }
-
-   
+    // Auto-generate a code from initials
+    const autoCode = trimmed.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 5);
     const facultyData = {
-      name: trimmedName,
+      name: trimmed,
       subject: '',
-      code: trimmedCode.toUpperCase(),
+      code: autoCode,
       year: '',
       branch: isSH ? (selectedBranch || '') : currentUser.department,
       sem: '',
@@ -258,147 +239,146 @@ const handleDeleteAccount = async () => {
       dept: currentUser.department,
       college: currentUser.college,
     };
-
     setIsSaving(true);
     try {
       if (editingId) {
         await dataService.updateFaculty(editingId, facultyData);
         setEditingId(null);
+        showToast('Faculty updated successfully.', 'success');
       } else {
         await dataService.createFaculty(facultyData);
+        showToast(`${trimmed} added to pool.`, 'success');
       }
       await loadDashboardData();
-      setNewFaculty({ name: '', subject: '', code: '' });
+      setNewFacultyName('');
     } catch (err) {
-      alert(`⚠️ ${err.message || 'Failed to save faculty'}`);
+      showToast(err.message || 'Failed to save faculty. Please try again.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Assign faculty from pool to a specific year/section/subject
-  const handleAssignFaculty = async () => {
-    if (!assignYear || !assignSem || !assignSection || !assignSubject.trim()) {
-      alert('⚠️ Please fill Year, Semester, Section and Subject');
+  const deleteFaculty = async (id) => {
+    if (!window.confirm('Remove this faculty entry? This cannot be undone.')) return;
+    try {
+      await dataService.deleteFacultyById(id);
+      await loadDashboardData();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete faculty.');
+    }
+  };
+
+  /* ────────────────────────────────────────
+     Handlers — Assign Modal (multi-step)
+  ──────────────────────────────────────── */
+  const openAssignModal = () => {
+    if (globalFacultyPool.length === 0) {
+      showToast('Add faculty to the pool first before assigning.');
       return;
     }
+    setAssignStep(1);
+    setAssignYear('');
+    setAssignSem('');
+    setAssignSubjectCount(1);
+    setAssignSubjectNames(['']);
+    setAssignRows([]);
+    setShowAssignModal(true);
+  };
 
+  const handleAssignStep1 = () => {
+    if (!isSH && !assignYear) { showToast('Please select a Year to continue.'); return; }
+    if (!assignSem) { showToast('Please select a Semester to continue.'); return; }
+    setAssignStep(2);
+  };
+
+  const handleAssignStep2 = () => {
     const subjectRegex = /^[A-Za-z\s&\-().,0-9]+$/;
-    if (!subjectRegex.test(assignSubject.trim())) {
-      alert('⚠️ Subject contains invalid characters');
-      return;
+    const valid = assignSubjectNames.map(s => s.trim()).filter(Boolean);
+    if (valid.length === 0) { showToast('Enter at least one subject name.'); return; }
+    for (const s of valid) {
+      if (!subjectRegex.test(s)) {
+        showToast(`"${s}" has invalid characters. Use letters, numbers, spaces, &, -, (, ), . only.`);
+        return;
+      }
     }
+    setAssignRows(valid.map(s => ({ subjectName: s, section: '', facultyId: '' })));
+    setAssignStep(3);
+  };
 
+  const handleAssignFaculty = async () => {
+    for (const row of assignRows) {
+      if (!row.section) { showToast('Please select a section for every subject.'); return; }
+      if (!row.facultyId) { showToast('Please select a faculty for every subject.'); return; }
+    }
     setIsAssigning(true);
     try {
-      await dataService.createFaculty({
-        name: assigningFaculty.name,
-        subject: assignSubject.trim(),
-        code: assigningFaculty.code,
-        year: isSH ? 'I' : assignYear,
-        branch: isSH ? selectedBranch : currentUser.department,
-        sem: assignSem,
-        sec: assignSection,
-        dept: currentUser.department,
-        college: currentUser.college,
-      });
+      for (const row of assignRows) {
+        const faculty = globalFacultyPool.find(f => f.id === row.facultyId);
+        if (!faculty) continue;
+        await dataService.createFaculty({
+          name: faculty.name,
+          subject: row.subjectName,
+          code: faculty.code,
+          year: isSH ? 'I' : assignYear,
+          branch: isSH ? selectedBranch : currentUser.department,
+          sem: assignSem,
+          sec: row.section,
+          dept: currentUser.department,
+          college: currentUser.college,
+        });
+      }
       await loadDashboardData();
+      showToast('Faculty assigned successfully!', 'success');
       setShowAssignModal(false);
-      setAssignYear('');
-      setAssignSem('');
-      setAssignSection('');
-      setAssignSubject('');
-      setAssigningFaculty(null);
     } catch (err) {
-      alert(`⚠️ ${err.message || 'Failed to assign faculty'}`);
+      showToast(err.message || 'Failed to assign faculty. Please try again.');
     } finally {
       setIsAssigning(false);
     }
   };
 
-  const editFaculty = (f) => {
-    setNewFaculty({
-      name: f.name,
-      subject: f.subject || '',
-      code: f.code,
-    });
-    setEditingId(f.id);
-  };
-
-  const deleteFaculty = async (id) => {
-    if (!window.confirm('🗑️ Delete this faculty?'))
-      return;
-    try {
-      await dataService.deleteFacultyById(id);
-      await loadDashboardData();
-    } catch (err) {
-      alert(
-        `⚠️ ${err.message || 'Failed to delete'}`
-      );
-    }
-  };
-
-const openPublishModal = () => {
-    if (facultyList.length === 0) {
-      alert('⚠️ Add at least one faculty member first.');
+  /* ────────────────────────────────────────
+     Handlers — Publish Modal
+  ──────────────────────────────────────── */
+  const openPublishModal = () => {
+    if (assignedFaculty.length === 0) {
+      showToast('No faculty assigned yet. Assign faculty to sections before publishing.');
       return;
     }
-    // Reset publish modal state
-    setPublishYear(isSH ? 'I' : (selectedYear || ''));
+    setPublishStep(1);
+    setPublishYear(isSH ? 'I' : '');
+    setPublishSem('');
     setPublishSection('');
     setPublishStudents('');
-    setPublishSem('');
-    setSelectedFacultyIds([]);
     setSlotNumber(1);
     setSlotStartDate('');
     setSlotEndDate('');
+    setSelectedFacultyIds([]);
     setShowModal(true);
   };
 
-  const toggleFacultySelection = (id) => {
-    setSelectedFacultyIds((prev) =>
-      prev.includes(id)
-        ? prev.filter((fid) => fid !== id)
-        : [...prev, id]
-    );
+  const handlePublishProceed = () => {
+    if (!publishSem) { showToast('Please select a Semester.'); return; }
+    if (!isSH && !publishYear) { showToast('Please select a Year.'); return; }
+    if (!publishSection) { showToast('Please select a Section.'); return; }
+    if (!slotStartDate || !slotEndDate) { showToast('Please select both start and end dates.'); return; }
+    if (new Date(slotEndDate) <= new Date(slotStartDate)) { showToast('End date must be after start date.'); return; }
+    if (publishSectionFaculty.length === 0) {
+      showToast('No faculty assigned to this section for the selected semester. Please assign faculty first.');
+      return;
+    }
+    setSelectedFacultyIds(publishSectionFaculty.map(f => f.id));
+    setPublishStep(2);
   };
 
-  // Publish batch via BACKEND
   const confirmPublish = async () => {
     if (selectedFacultyIds.length === 0) {
-      alert('⚠️ Select at least one faculty from the right panel');
+      showToast('Select at least one faculty to include in this feedback link.');
       return;
     }
-    if (!publishYear) {
-      alert('⚠️ Please select a Year');
-      return;
-    }
-    if (!publishSection) {
-      alert('⚠️ Please select a Section');
-      return;
-    }
-    if (!publishStudents || parseInt(publishStudents) < 1) {
-      alert('⚠️ Please enter the total number of students for this section');
-      return;
-    }
-    if (!publishSem) {
-      alert('⚠️ Please select a Semester');
-      return;
-    }
-    if (!slotStartDate || !slotEndDate) {
-      alert('⚠️ Please select start and end dates for this slot');
-      return;
-    }
-    if (new Date(slotEndDate) <= new Date(slotStartDate)) {
-      alert('⚠️ End date must be after start date');
-      return;
-    }
-
     const targetYear = isSH ? 'I' : publishYear;
     const targetBranch = isSH ? selectedBranch : currentUser.department;
-
     setIsPublishing(true);
-
     try {
       const result = await dataService.createBatch({
         college: currentUser.college,
@@ -408,536 +388,398 @@ const openPublishModal = () => {
         sem: publishSem,
         sec: publishSection,
         slot: slotNumber,
-        slotStartDate: slotStartDate,
-        slotEndDate: slotEndDate,
+        slotStartDate,
+        slotEndDate,
         slotLabel: slotNumber === 1 ? 'Previous Feedback Cycle' : 'Latest Feedback Cycle',
         faculty_ids: selectedFacultyIds,
         totalStudents: parseInt(publishStudents) || 0,
       });
-
-      if (result && result.feedbackLink) {
+      if (result?.feedbackLink) {
         const fullLink = result.feedbackLink.startsWith('http')
-  ? result.feedbackLink
-  : `${window.location.origin}${result.feedbackLink}`;
-        try {
-          await navigator.clipboard.writeText(
-            fullLink
-          );
-        } catch (e) {
-          console.warn(
-            'Clipboard write failed'
-          );
-        }
-
-        const displayInfo = isSH
-          ? `Branch ${targetBranch} • Semester ${selectedSem} • Section ${selectedSec}`
-          : `Year ${targetYear} • Semester ${selectedSem} • Section ${selectedSec}`;
-
-        alert(
-          `✅ Feedback Link Published!\n\n${fullLink}\n\n📋 Link copied to clipboard!\n\n` +
-            `Share this link with students of:\n${displayInfo}`
-        );
-
+          ? result.feedbackLink
+          : `${window.location.origin}${result.feedbackLink}`;
+        try { await navigator.clipboard.writeText(fullLink); } catch (_) {}
+        showToast('Feedback link published and copied to clipboard!', 'success');
         setShowModal(false);
-        setSelectedFacultyIds([]);
-        setSlotNumber(1);
-        setSlotStartDate('');
-        setSlotEndDate('');
-        setPublishYear('');
-        setPublishSection('');
-        setPublishStudents('');
-
-        // Refresh batches
         await loadDashboardData();
       }
     } catch (err) {
-      alert(
-        `⚠️ ${err.message || 'Failed to publish. Please try again.'}`
-      );
+      showToast(err.message || 'Failed to publish. Please try again.');
     } finally {
       setIsPublishing(false);
     }
   };
 
-  const calculateFacultyStatistics = (
-    feedbackData
-  ) => {
-    if (
-      !feedbackData ||
-      feedbackData.length === 0
-    )
-      return null;
-
-    const PARAMS = [
-      'Knowledge of the subject',
-      'Coming well prepared for the class',
-      'Giving clear explanations',
-      'Command of language',
-      'Clear and audible voice',
-      'Holding the attention of students through the class',
-      'Providing more matter than in the textbooks',
-      'Capability to clear the doubts of students',
-      'Encouraging students to ask questions and participate',
-      'Appreciating students as and when deserving',
-      'Willingness to help students even out of the class',
-      'Return of valued test papers/records in time',
-      'Punctuality and following timetable schedule',
-      'Coverage of syllabus',
-      'Impartial (teaching all students alike)',
-    ];
-
-    const totalResponses = feedbackData.length;
-    const slot1Data = feedbackData.filter(
-      (f) => f.slot === 1
-    );
-    const slot2Data = feedbackData.filter(
-      (f) => f.slot === 2
-    );
-
-    const calculateSlotStats = (slotData) => {
-      if (!slotData || slotData.length === 0)
-        return null;
-      const parameterStats = {};
-      PARAMS.forEach((param) => {
-        const ratings = slotData
-          .map((f) => f.ratings[param])
-          .filter((r) => r !== undefined);
-        const sum = ratings.reduce(
-          (a, b) => a + b,
-          0
-        );
-        const avg =
-          ratings.length > 0
-            ? sum / ratings.length
-            : 0;
-        const percentage = (avg / 10) * 100;
-        parameterStats[param] = {
-          average: avg.toFixed(2),
-          percentage: percentage.toFixed(1),
-          totalRatings: ratings.length,
-        };
-      });
-      const allRatings = slotData.flatMap((f) =>
-        Object.values(f.ratings)
-      );
-      const overallAvg =
-        allRatings.reduce((a, b) => a + b, 0) /
-        allRatings.length;
-      const ratingDist = {};
-      for (let i = 1; i <= 10; i++)
-        ratingDist[i] = 0;
-      allRatings.forEach((r) => {
-        ratingDist[r] =
-          (ratingDist[r] || 0) + 1;
-      });
-      return {
-        parameterStats,
-        overallAverage: overallAvg.toFixed(2),
-        ratingDistribution: ratingDist,
-        responseCount: slotData.length,
-      };
-    };
-
-    return {
-      totalResponses,
-      slot1: calculateSlotStats(slot1Data),
-      slot2: calculateSlotStats(slot2Data),
-      hasSlot1: slot1Data.length > 0,
-      hasSlot2: slot2Data.length > 0,
-    };
+  /* ────────────────────────────────────────
+     Handlers — Section sidebar quick-edit
+  ──────────────────────────────────────── */
+  const startEditSection = (s) => {
+    setEditingSection(s.id);
+    setEditSectionName(s.sectionName);
+    setEditSectionStrength(String(s.strength || 0));
   };
 
-    const handleDownloadPDF = async (faculty) => {
+  const saveEditSection = async (id) => {
+    if (!editSectionName.trim()) { showToast('Section name cannot be empty.'); return; }
     try {
-      const stats =
-        await dataService.getFacultyStats(
-          faculty.id
-        );
-      if (!stats || stats.totalResponses === 0) {
-        alert(
-          '⚠️ No feedback data available for PDF.'
-        );
-        return;
+      await sectionAPI.update(id, { sectionName: editSectionName.trim(), strength: Number(editSectionStrength) || 0 });
+      setSections(prev => prev.map(x => x.id === id
+        ? { ...x, sectionName: editSectionName.trim(), strength: Number(editSectionStrength) || 0 }
+        : x));
+      if (selectedSection === sections.find(s => s.id === id)?.sectionName) {
+        setSelectedSection(editSectionName.trim());
       }
-      const fileName = generateFacultyPDF(
-        faculty,
-        stats,
-        currentUser.college
-      );
-      alert(`✅ PDF Downloaded: ${fileName}`);
+      setEditingSection(null);
     } catch (err) {
-      console.error('PDF generation error:', err);
-     alert(`⚠️ Failed to generate PDF: ${err?.message || err}`);
-console.error('PDF error:', err);
+      showToast('Failed to update section.');
+    }
+  };
+
+  /* ────────────────────────────────────────
+     Handlers — Download / PDF / Excel
+  ──────────────────────────────────────── */
+  const handleDownloadPDF = async (faculty) => {
+    try {
+      const stats = await dataService.getFacultyStats(faculty.id);
+      if (!stats || stats.totalResponses === 0) { showToast('No feedback data available to generate PDF.'); return; }
+      const fileName = generateFacultyPDF(faculty, stats, currentUser.college);
+      showToast(`PDF downloaded: ${fileName}`, 'success');
+    } catch (err) {
+      showToast(`Failed to generate PDF: ${err?.message || 'Unknown error'}`);
     }
   };
 
   const handleDownloadExcel = async (faculty) => {
     try {
-      const stats =
-        await dataService.getFacultyStats(
-          faculty.id
-        );
-      if (!stats || stats.totalResponses === 0) {
-        alert(
-          '⚠️ No feedback data available for Excel.'
-        );
-        return;
-      }
-      // Fetch raw data for the Raw Responses sheet
+      const stats = await dataService.getFacultyStats(faculty.id);
+      if (!stats || stats.totalResponses === 0) { showToast('No feedback data available to generate Excel.'); return; }
       let rawData = [];
-      try {
-        rawData =
-          await dataService.getFacultyReportData(
-            faculty.id
-          );
-      } catch (e) {
-        console.warn(
-          'Raw data unavailable, generating without it'
-        );
-      }
-      const fileName = generateFacultyExcel(
-        faculty,
-        rawData,
-        stats
-      );
-      alert(`✅ Excel Downloaded: ${fileName}`);
+      try { rawData = await dataService.getFacultyReportData(faculty.id); } catch (_) {}
+      const fileName = generateFacultyExcel(faculty, rawData, stats);
+      showToast(`Excel downloaded: ${fileName}`, 'success');
     } catch (err) {
-      console.error('Excel generation error:', err);
-      alert('⚠️ Failed to generate Excel.');
+      showToast('Failed to generate Excel report.');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deleteAccountPassword) { setDeleteAccountError('Password is required to proceed.'); return; }
+    setIsDeletingAccount(true);
+    setDeleteAccountError('');
+    try {
+      await dataService.deleteAccount(deleteAccountPassword);
+      logoutUser();
+      navigate('/', { replace: true });
+    } catch (err) {
+      setDeleteAccountError(err.message || 'Failed to delete account. Check your password and try again.');
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
   if (!currentUser) return null;
+
+  /* ════════════════════════════════════════
+     RENDER
+  ════════════════════════════════════════ */
   return (
     <>
+      <Toast toast={toast} onClose={() => setToast({ show: false, message: '', type: 'error' })} />
+
       <div className="dashboard-container">
+
+        {/* ── Header ── */}
         <header className="dashboard-header">
           <div className="header-left">
-            <div className="logo-small">
-              <span>RISE</span>
-            </div>
+            <div className="logo-small"><span>RISE</span></div>
             <div className="header-info">
               <h2>HoD Dashboard</h2>
-              <div className="dept-badge">
-                {currentUser.department} •{' '}
-                {currentUser.college} College
-              </div>
+              <div className="dept-badge">{currentUser.department} • {currentUser.college} College</div>
             </div>
           </div>
           <div className="header-right">
             <div className="user-info">
-              <span className="user-icon">
-                👤
-              </span>
+              <span className="user-icon">👤</span>
               <span>{currentUser.name}</span>
             </div>
-            <button
-              className="logout-btn"
-              style={{ background: '#e74c3c', marginRight: '8px' }}
-              onClick={() => {
-                setDeleteAccountPassword('');
-                setDeleteAccountError('');
-                setShowDeleteAccountModal(true);
-              }}
-            >
-              <span>🗑️ Delete Account</span>
+            <button className="logout-btn btn-danger"
+              onClick={() => { setDeleteAccountPassword(''); setDeleteAccountError(''); setShowDeleteAccountModal(true); }}>
+              🗑️ Delete Account
             </button>
-            <button
-              className="logout-btn"
-              onClick={handleLogout}
-            >
-              <span>Logout</span> <span>↩</span>
+            <button className="logout-btn" onClick={() => { logoutUser(); navigate('/', { replace: true }); }}>
+              Logout ↩
             </button>
           </div>
         </header>
 
         <main className="dashboard-main">
           <div className="dashboard-grid">
+
+            {/* ══════════════════════════════════
+                LEFT PANEL — Configure Session
+            ══════════════════════════════════ */}
             <section className="panel config-panel">
+
               <div className="panel-header">
-                <h3>📝 Configure Session</h3>
+                <h3>👥 Faculty Pool</h3>
               </div>
+              <p className="pool-hint">Add faculty here, then assign them to years, sections and subjects.</p>
 
-              <div className="config-form">
-                <div className="panel-header">
-                  <h3>👥 Faculty Pool</h3>
-                </div>
-                <p style={{ fontSize: '12px', color: '#64748b', margin: '-12px 0 12px 0' }}>
-                  Add faculty to the pool first, then assign them to specific years and sections.
-                </p>
-
-                <div className="faculty-form">
-                  <input
-                    type="text"
-                    placeholder="Faculty Name"
-                    value={newFaculty.name}
-                    onChange={(e) =>
-                      setNewFaculty((prev) => ({
-                        ...prev,
-                        name: e.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    placeholder="Faculty Name"
-                    value={newFaculty.name}
-                    onChange={(e) =>
-                      setNewFaculty((prev) => ({
-                        ...prev,
-                        name: e.target.value,
-                      }))
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={`btn-add ${editingId ? 'btn-update' : ''}`}
-                    onClick={addOrUpdateFaculty}
-                    disabled={isSaving}
-                  >
-                    {isSaving
-                      ? 'Saving...'
-                      : editingId
-                        ? 'Update'
-                        : 'Add'}
-                  </button>
-                  {editingId && (
-                    <button
-                      type="button"
-                      className="btn-cancel"
-                      onClick={() => {
-                        setEditingId(null);
-                        setNewFaculty({
-                          name: '',
-                          subject: '',
-                          code: '',
-                        });
-                      }}
-                    >
-                      Cancel Edit
-                    </button>
-                  )}
-                </div>
-
-                <div className="divider" />
-		<button
-                  type="button"
-                  onClick={() => { setSectionError(''); setSectionForm({ key: null, year: 'II', sectionName: '', strength: '', applyAll: false, branch: '' }); setShowSectionModal(true); }}
-                  style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', marginBottom: '8px' }}
-                >
-                  🗂️ Manage Class Sections
-                </button>
-
+              {/* Single input — Req 1 */}
+              <div className="faculty-add-form">
+                <input
+                  type="text"
+                  placeholder="Enter Faculty Full Name"
+                  value={newFacultyName}
+                  onChange={e => setNewFacultyName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addOrUpdateFaculty()}
+                  className="faculty-name-input"
+                />
                 <button
                   type="button"
-                  className="btn-publish"
-                  onClick={openPublishModal}
+                  className={`btn-add ${editingId ? 'btn-update' : ''}`}
+                  onClick={addOrUpdateFaculty}
+                  disabled={isSaving}
                 >
-                  🚀 Publish Feedback Link
+                  {isSaving ? '…' : editingId ? 'Update' : '+ Add'}
                 </button>
+                {editingId && (
+                  <button type="button" className="btn-cancel-edit"
+                    onClick={() => { setEditingId(null); setNewFacultyName(''); }}>
+                    ✕
+                  </button>
+                )}
+              </div>
 
-                <div className="divider" />
+              <div className="divider" />
 
-                {/* ── Download Section ── */}
-                <div style={{ padding: '12px', background: '#f0fdf4', borderRadius: '12px', border: '2px solid #86efac' }}>
-                  <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: '800', color: '#15803d' }}>
-                    📥 Download Section Responses
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <select
-                      value={downloadYear}
-                      onChange={(e) => setDownloadYear(e.target.value)}
-                      style={{ padding: '8px', borderRadius: '8px', border: '1px solid #86efac', fontSize: '13px', fontWeight: '600' }}
-                    >
-                      <option value="">Select Year</option>
-                      {YEARS.map(y => <option key={y} value={y}>{y} Year</option>)}
-                    </select>
-                    <select
-                      value={downloadSection}
-                      onChange={(e) => setDownloadSection(e.target.value)}
-                      style={{ padding: '8px', borderRadius: '8px', border: '1px solid #86efac', fontSize: '13px', fontWeight: '600' }}
-                    >
-                      <option value="">Select Section</option>
-                      {availableSections.map(s => <option key={s} value={s}>Section {s}</option>)}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!downloadYear || !downloadSection) {
-                          alert('⚠️ Select Year and Section to download');
-                          return;
-                        }
-                        alert(`📥 Download for Year ${downloadYear} Section ${downloadSection} — format to be configured`);
-                      }}
-                      style={{ padding: '8px', background: 'linear-gradient(135deg,#10b981,#059669)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
-                    >
-                      📥 Download
-                    </button>
-                  </div>
-                </div>
+              <button type="button" className="btn-manage-sections"
+                onClick={() => { setSectionError(''); setShowSectionModal(true); }}>
+                🗂️ Manage Class Sections
+              </button>
+
+              <button type="button" className="btn-publish" onClick={openPublishModal}>
+                🚀 Publish Feedback Link
+              </button>
+
+              <div className="divider" />
+
+              {/* Download — Req 4 & 9 */}
+              <div className="download-section">
+                <h4 className="download-title">📥 Download Section Responses</h4>
+                <select
+                  value={downloadYear}
+                  onChange={e => { setDownloadYear(e.target.value); setDownloadSection(''); }}
+                  className="download-select"
+                >
+                  <option value="">Select Year</option>
+                  {availableYears.map(y => <option key={y} value={y}>{y} Year</option>)}
+                </select>
+                <select
+                  value={downloadSection}
+                  onChange={e => setDownloadSection(e.target.value)}
+                  disabled={!downloadYear}
+                  className="download-select"
+                >
+                  <option value="">
+                    {!downloadYear
+                      ? 'Select year first'
+                      : downloadSections.length === 0
+                        ? 'No completed sections yet'
+                        : 'Select Section'}
+                  </option>
+                  {downloadSections.map(s => (
+                    <option key={s.id} value={s.sectionName}>Section {s.sectionName} ✅</option>
+                  ))}
+                </select>
+                <button type="button" className="btn-download"
+                  onClick={() => {
+                    if (!downloadYear || !downloadSection) {
+                      showToast('Select both Year and Section to download.');
+                      return;
+                    }
+                    showToast('Download format will be configured soon.', 'info');
+                  }}>
+                  📥 Download
+                </button>
               </div>
             </section>
 
-<section className="panel list-panel">
-              {/* Global Faculty Pool */}
-              <div className="panel-header">
-                <h3>👥 Faculty Pool ({globalFacultyPool.length})</h3>
+            {/* ══════════════════════════════════
+                RIGHT PANEL — Faculty List
+            ══════════════════════════════════ */}
+            <section className="panel list-panel">
+
+              {/* Pool chips */}
+              <div className="pool-panel-header">
+                <h3>👥 Faculty Pool <span className="count-badge">{globalFacultyPool.length}</span></h3>
+                <button type="button" className="btn-assign-new" onClick={openAssignModal}>
+                  + Assign Faculty
+                </button>
               </div>
-              <div style={{ padding: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px', borderBottom: '2px solid #e2e8f0', marginBottom: '12px', minHeight: '60px' }}>
+
+              <div className="pool-chips">
                 {globalFacultyPool.length === 0 && (
-                  <p style={{ fontSize: '12px', color: '#94a3b8', padding: '8px' }}>No faculty added yet. Add from the left panel.</p>
+                  <p className="pool-empty">No faculty added yet. Use the left panel to add.</p>
                 )}
                 {globalFacultyPool.map(f => (
-                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'linear-gradient(135deg,#e0f2fe,#dbeafe)', borderRadius: '20px', border: '2px solid #93c5fd' }}>
-                    <span style={{ fontWeight: '800', fontSize: '12px', color: '#1e40af' }}>{f.code}</span>
-                    <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600' }}>{f.name}</span>
-                    <button
-                      type="button"
-                      title="Assign to Year/Section"
-                      onClick={() => { setAssigningFaculty(f); setAssignYear(''); setAssignSem(''); setAssignSection(''); setAssignSubject(''); setShowAssignModal(true); }}
-                      style={{ padding: '2px 8px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
-                    >+ Assign</button>
-                    <button
-                      type="button"
-                      onClick={() => editFaculty(f)}
-                      style={{ padding: '2px 6px', background: '#fef9c3', color: '#854d0e', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
-                    >✏️</button>
-                    <button
-                      type="button"
+                  <div key={f.id} className="pool-chip">
+                    <span className="chip-name">{f.name}</span>
+                    <button type="button" className="chip-btn chip-edit"
+                      onClick={() => { setNewFacultyName(f.name); setEditingId(f.id); }}
+                      title="Edit">✏️</button>
+                    <button type="button" className="chip-btn chip-delete"
                       onClick={() => deleteFaculty(f.id)}
-                      style={{ padding: '2px 6px', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
-                    >🗑</button>
+                      title="Delete">🗑</button>
                   </div>
                 ))}
               </div>
 
-              {/* Assigned Faculty by Year/Section */}
-              <div className="panel-header" style={{ marginBottom: '8px' }}>
-                <h3>📋 Assignments ({assignedFaculty.length})</h3>
+              <div className="divider" style={{ margin: '10px 0' }} />
+
+              {/* Assigned faculty header */}
+              <div className="panel-header" style={{ marginBottom: '12px' }}>
+                <h3>📋 Assignments <span className="count-badge">{assignedFaculty.length}</span></h3>
               </div>
 
+              {/* ── S&H Layout ── */}
               {isSH ? (
                 <div className="sh-layout">
                   <div className="branch-sidebar">
                     <div className="sidebar-header">Branches</div>
-                    {availableBranches.map((branch) => (
-                      <button
-                        key={branch}
-                        type="button"
+                    {availableBranches.map(branch => (
+                      <button key={branch} type="button"
                         className={`branch-btn ${selectedBranch === branch ? 'active' : ''}`}
-                        onClick={() => setSelectedBranch(branch)}
-                      >
+                        onClick={() => setSelectedBranch(branch)}>
                         <span className="branch-name">{branch}</span>
                         <span className="branch-count">{assignedFaculty.filter(f => f.branch === branch).length}</span>
                       </button>
                     ))}
                   </div>
-
                   <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: '8px' }}>
                     {selectedBranch && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flexShrink: 0 }}>
-                        <button type="button" onClick={() => setSelectedSHSection(null)}
-                          style={{ padding: '4px 12px', borderRadius: '20px', border: '2px solid', borderColor: selectedSHSection === null ? '#ff6b9d' : '#e2e8f0', background: selectedSHSection === null ? 'linear-gradient(135deg,#ff6b9d,#feca57)' : '#f8fafc', color: selectedSHSection === null ? 'white' : '#2d3436', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
-                          All
-                        </button>
+                      <div className="section-filter-tabs">
+                        <button type="button"
+                          className={`sec-tab ${!selectedSHSection ? 'active' : ''}`}
+                          onClick={() => setSelectedSHSection(null)}>All</button>
                         {(sectionsByKey[selectedBranch] || []).map(s => (
-                          <button key={s.id} type="button" onClick={() => setSelectedSHSection(s.sectionName)}
-                            style={{ padding: '4px 12px', borderRadius: '20px', border: '2px solid', borderColor: selectedSHSection === s.sectionName ? '#ff6b9d' : '#e2e8f0', background: selectedSHSection === s.sectionName ? 'linear-gradient(135deg,#ff6b9d,#feca57)' : '#f8fafc', color: selectedSHSection === s.sectionName ? 'white' : '#2d3436', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
-                            {s.sectionName}
+                          <button key={s.id} type="button"
+                            className={`sec-tab ${selectedSHSection === s.sectionName ? 'active' : ''}`}
+                            onClick={() => setSelectedSHSection(s.sectionName)}>
+                            {s.sectionName} ({s.strength || 0})
                           </button>
                         ))}
-                        <button type="button" onClick={() => { setSectionForm(f => ({ ...f, year: 'I', branch: selectedBranch })); setSectionError(''); setShowSectionModal(true); }}
-                          style={{ padding: '4px 10px', borderRadius: '20px', border: '2px dashed #48dbfb', background: '#f0fdff', color: '#0891b2', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
-                          + Manage Sections
-                        </button>
                       </div>
                     )}
                     <div className="faculty-list">
-                      {!selectedBranch && <div className="empty-state"><span className="empty-icon">📚</span><p>Select a branch to view assignments</p></div>}
-                      {selectedBranch && filteredFaculty.length === 0 && <div className="empty-state"><span className="empty-icon">🧑‍🏫</span><p>No assignments for {selectedBranch} yet</p></div>}
-                      {selectedBranch && filteredFaculty.map((f) => (
-                        <div key={f.id} className="faculty-card">
-                          <div className="faculty-info">
-                            <div className="faculty-code">{f.code}</div>
-                            <div className="faculty-details">
-                              <div className="faculty-name">{f.name}</div>
-                              <div className="faculty-subject">{f.subject}</div>
-                              <div className="faculty-badge">Year {f.year} • Sem {f.semester} • Sec {f.section}</div>
-                            </div>
-                          </div>
-                          <div className="faculty-actions">
-                            <button type="button" className="btn-icon delete" onClick={() => deleteFaculty(f.id)} title="Remove assignment">🗑️</button>
-                            <button type="button" className="btn-icon" onClick={() => handleDownloadPDF(f)} title="Download PDF" style={{ background: 'rgba(239,68,68,0.1)' }}>📄</button>
-                            <button type="button" className="btn-icon" onClick={() => handleDownloadExcel(f)} title="Download Excel" style={{ background: 'rgba(16,185,129,0.1)' }}>📊</button>
-                          </div>
-                        </div>
+                      {!selectedBranch && <div className="empty-state"><span className="empty-icon">📚</span><p>Select a branch</p></div>}
+                      {selectedBranch && filteredFaculty.length === 0 && <div className="empty-state"><span className="empty-icon">🧑‍🏫</span><p>No assignments for {selectedBranch}</p></div>}
+                      {filteredFaculty.map(f => (
+                        <FacultyCard key={f.id} f={f} onDelete={deleteFaculty} onPDF={handleDownloadPDF} onExcel={handleDownloadExcel} />
                       ))}
                     </div>
                   </div>
                 </div>
               ) : (
+                /* ── Normal (non S&H) Layout ── */
                 <>
                   <div className="year-tabs">
-                    {availableYears.map((y) => (
-                      <button key={y} type="button" className={`tab-btn ${selectedYear === y ? 'active' : ''}`}
-                        onClick={() => { setSelectedYear(y); setSelectedSection(null); }}>
+                    {availableYears.map(y => (
+                      <button key={y} type="button"
+                        className={`tab-btn ${selectedYear === y ? 'active' : ''}`}
+                        onClick={() => { setSelectedYear(y); setSelectedSection(null); setEditingSection(null); }}>
                         <span>{y} Year</span>
-                        <span className="count">{assignedFaculty.filter(f => f.year === y).length} faculty</span>
+                        <span className="count">{assignedFaculty.filter(f => f.year === y).length}</span>
                       </button>
                     ))}
                   </div>
 
                   <div className="sh-layout" style={{ flex: 1, minHeight: 0 }}>
+                    {/* Section sidebar — Req 3 */}
                     <div className="branch-sidebar">
-                      <div className="sidebar-header">
-                        Sections
-                        <button type="button"
-                          onClick={() => { setSectionForm(f => ({ ...f, year: selectedYear || availableYears[0] })); setSectionError(''); setShowSectionModal(true); }}
-                          style={{ display: 'block', width: '100%', marginTop: '8px', padding: '6px', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>
-                          + Manage
-                        </button>
-                      </div>
-                      <button type="button" className={`branch-btn ${selectedSection === null ? 'active' : ''}`} onClick={() => setSelectedSection(null)}>
-                        <span className="branch-name">All</span>
-                        <span className="branch-count">{assignedFaculty.filter(f => f.year === selectedYear).length}</span>
-                      </button>
-                      {(sectionsByKey[selectedYear] || []).map(s => (
-                        <button key={s.id} type="button" className={`branch-btn ${selectedSection === s.sectionName ? 'active' : ''}`} onClick={() => setSelectedSection(s.sectionName)}>
-                          <span className="branch-name">{s.sectionName}</span>
-                          <span className="branch-count">{assignedFaculty.filter(f => f.year === selectedYear && (f.section === s.sectionName || f.sec === s.sectionName)).length}</span>
-                        </button>
-                      ))}
-                      {(sectionsByKey[selectedYear] || []).length === 0 && (
-                        <p style={{ fontSize: '11px', color: '#a0aec0', textAlign: 'center', padding: '8px' }}>No sections.<br />Click Manage.</p>
+                      <div className="sidebar-header">Sections</div>
+                      {!selectedYear && <p className="sidebar-hint">Pick a year</p>}
+                      {selectedYear && (
+                        <>
+                          <button type="button"
+                            className={`branch-btn ${selectedSection === null ? 'active' : ''}`}
+                            onClick={() => { setSelectedSection(null); setEditingSection(null); }}>
+                            <span className="branch-name">All</span>
+                            <span className="branch-count">{assignedFaculty.filter(f => f.year === selectedYear).length}</span>
+                          </button>
+
+                          {(sectionsByKey[selectedYear] || []).map(s => (
+                            <div key={s.id} className="section-sidebar-item">
+                              {editingSection === s.id ? (
+                                /* Inline edit mode */
+                                <div className="sec-edit-form">
+                                  <input
+                                    value={editSectionName}
+                                    onChange={e => setEditSectionName(e.target.value)}
+                                    className="sec-edit-name"
+                                    placeholder="Name"
+                                  />
+                                  <input
+                                    type="number"
+                                    value={editSectionStrength}
+                                    onChange={e => setEditSectionStrength(e.target.value)}
+                                    className="sec-edit-str"
+                                    placeholder="Strength"
+                                  />
+                                  <button type="button" className="qa-btn qa-save"
+                                    onClick={() => saveEditSection(s.id)}>✓</button>
+                                  <button type="button" className="qa-btn qa-cancel"
+                                    onClick={() => setEditingSection(null)}>✕</button>
+                                </div>
+                              ) : (
+                                /* Normal display */
+                                <div className="sec-display-row">
+                                  <button type="button"
+                                    className={`branch-btn sec-branch-btn ${selectedSection === s.sectionName ? 'active' : ''}`}
+                                    onClick={() => setSelectedSection(s.sectionName)}>
+                                    <span className="branch-name">{s.sectionName}</span>
+                                    <span className="branch-count">{s.strength || 0}👤</span>
+                                  </button>
+                                  <div className="sec-actions">
+                                    <button type="button" className="qa-btn qa-edit"
+                                      title="Edit section"
+                                      onClick={() => startEditSection(s)}>✏️</button>
+                                    <button type="button" className="qa-btn qa-delete"
+                                      title="Delete section"
+                                      onClick={async () => {
+                                        if (!window.confirm(`Delete section "${s.sectionName}"?`)) return;
+                                        try {
+                                          await sectionAPI.delete(s.id);
+                                          setSections(prev => prev.filter(x => x.id !== s.id));
+                                          if (selectedSection === s.sectionName) setSelectedSection(null);
+                                        } catch (err) {
+                                          showToast('Failed to delete section.');
+                                        }
+                                      }}>🗑</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+
+                          {(sectionsByKey[selectedYear] || []).length === 0 && (
+                            <p className="sidebar-hint">No sections.<br />Use Manage Sections.</p>
+                          )}
+                        </>
                       )}
                     </div>
 
                     <div className="faculty-list">
-                      {!selectedYear && <div className="empty-state"><span className="empty-icon">📂</span><p>Select a year to view assignments</p></div>}
+                      {!selectedYear && <div className="empty-state"><span className="empty-icon">📂</span><p>Select a year</p></div>}
                       {selectedYear && filteredFaculty.length === 0 && (
                         <div className="empty-state">
                           <span className="empty-icon">🧑‍🏫</span>
-                          <p>{selectedSection ? `No assignments in Section ${selectedSection} for Year ${selectedYear}` : `No assignments for Year ${selectedYear} yet`}</p>
-                          <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>Use "+ Assign" on a faculty in the pool above</p>
+                          <p>{selectedSection ? `No assignments in Section ${selectedSection}` : `No assignments for Year ${selectedYear}`}</p>
+                          <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>Use "+ Assign Faculty" above</p>
                         </div>
                       )}
-                      {filteredFaculty.map((f) => (
-                        <div key={f.id} className="faculty-card">
-                          <div className="faculty-info">
-                            <div className="faculty-code">{f.code}</div>
-                            <div className="faculty-details">
-                              <div className="faculty-name">{f.name}</div>
-                              <div className="faculty-subject">{f.subject}</div>
-                              <div className="faculty-badge">Year {f.year} • Sem {f.semester || f.sem} • Sec {f.section || f.sec}</div>
-                            </div>
-                          </div>
-                          <div className="faculty-actions">
-                            <button type="button" className="btn-icon delete" onClick={() => deleteFaculty(f.id)} title="Remove assignment">🗑️</button>
-                            <button type="button" className="btn-icon" onClick={() => handleDownloadPDF(f)} title="Download PDF" style={{ background: 'rgba(239,68,68,0.1)' }}>📄</button>
-                            <button type="button" className="btn-icon" onClick={() => handleDownloadExcel(f)} title="Download Excel" style={{ background: 'rgba(16,185,129,0.1)' }}>📊</button>
-                          </div>
-                        </div>
+                      {filteredFaculty.map(f => (
+                        <FacultyCard key={f.id} f={f} onDelete={deleteFaculty} onPDF={handleDownloadPDF} onExcel={handleDownloadExcel} />
                       ))}
                     </div>
                   </div>
@@ -945,518 +787,516 @@ console.error('PDF error:', err);
               )}
             </section>
           </div>
+
+          {/* ══════════════════════════════════════════
+              LIVE FEED — Req 8
+          ══════════════════════════════════════════ */}
+          <section className="live-feed-section">
+            <div className="live-feed-header">
+              <h3>📡 Published Feedback Links</h3>
+              <span className="live-pill">● LIVE</span>
+            </div>
+            {allBatches.length === 0 ? (
+              <div className="live-feed-empty">
+                No published links yet. Hit "🚀 Publish Feedback Link" to get started.
+              </div>
+            ) : (
+              <div className="live-feed-grid">
+                {allBatches.map(batch => {
+                  const responses = batch.responseCount || 0;
+                  const total = batch.totalStudents || 0;
+                  const pct = total > 0 ? Math.min(100, Math.round((responses / total) * 100)) : 0;
+                  const now = new Date();
+                  const isLive = batch.slotStartDate && batch.slotEndDate
+                    && now >= new Date(batch.slotStartDate) && now <= new Date(batch.slotEndDate);
+                  return (
+                    <div key={batch.id} className={`lfc ${isLive ? 'lfc--live' : 'lfc--ended'}`}>
+                      <div className="lfc-top">
+                        <span className={`lfc-status ${isLive ? 'live' : 'ended'}`}>
+                          {isLive ? '🟢 LIVE' : '⚫ ENDED'}
+                        </span>
+                        <span className="lfc-slot">Slot {batch.slot}</span>
+                      </div>
+                      <div className="lfc-identity">
+                        <span>Year {batch.year}</span>
+                        <span className="lfc-dot">•</span>
+                        <span>Sem {batch.sem}</span>
+                        <span className="lfc-dot">•</span>
+                        <span>Sec {batch.sec}</span>
+                      </div>
+                      <div className="lfc-dates">
+                        📅 {batch.slotStartDate ? new Date(batch.slotStartDate).toLocaleDateString('en-IN') : '—'}
+                        {' → '}
+                        {batch.slotEndDate ? new Date(batch.slotEndDate).toLocaleDateString('en-IN') : '—'}
+                      </div>
+                      <div className="lfc-progress-row">
+                        <span className="lfc-resp-count">{responses}/{total}</span>
+                        <div className="lfc-bar">
+                          <div className="lfc-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="lfc-pct">{pct}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </main>
 
+        {/* ══════════════════════════════════════════
+            PUBLISH MODAL — Req 7
+        ══════════════════════════════════════════ */}
         {showModal && (
           <div className="modal-overlay" onClick={() => setShowModal(false)}>
-            <div
-              className="modal-content"
-              onClick={(e) => e.stopPropagation()}
-              style={{ maxWidth: '860px', width: '95%', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
-            >
+            <div className="modal-content publish-modal" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <h2>🔗 Publish Feedback Link</h2>
-                <p>Configure section details and select faculty for this link</p>
+                <p>{publishStep === 1 ? 'Step 1 — Configure slot & section' : 'Step 2 — Review faculty & confirm'}</p>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0', flex: 1, overflow: 'hidden' }}>
-
-                {/* ── LEFT PANEL ── */}
-                <div style={{ padding: '20px', borderRight: '2px solid #e2e8f0', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>📋 Section & Slot Details</h3>
-
-	{/* Semester */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Semester</label>
-                    <select
-                      value={publishSem}
-                      onChange={(e) => setPublishSem(e.target.value)}
-                      style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}
-                    >
+              {publishStep === 1 && (
+                <div className="modal-body">
+                  <div className="form-field">
+                    <label>Semester</label>
+                    <select value={publishSem} onChange={e => setPublishSem(e.target.value)}>
                       <option value="">Select Semester</option>
                       {SEMESTERS.map(s => <option key={s} value={s}>Semester {s}</option>)}
                     </select>
                   </div>
 
-                  {/* Year */}
                   {!isSH && (
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Year</label>
-                      <select
-                        value={publishYear}
-                        onChange={(e) => { setPublishYear(e.target.value); setSelectedFacultyIds([]); }}
-                        style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}
-                      >
+                    <div className="form-field">
+                      <label>Year</label>
+                      <select value={publishYear} onChange={e => { setPublishYear(e.target.value); setPublishSection(''); }}>
                         <option value="">Select Year</option>
                         {availableYears.map(y => <option key={y} value={y}>{y} Year</option>)}
                       </select>
                     </div>
                   )}
 
-                  {/* Section — filtered by selected year */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Section</label>
-                    <select
-                      value={publishSection}
-                      onChange={(e) => {
+                  <div className="form-field">
+                    <label>Section</label>
+                    <select value={publishSection}
+                      onChange={e => {
                         setPublishSection(e.target.value);
-                        // Auto-fill student count from section data
                         const key = isSH ? selectedBranch : publishYear;
                         const sec = (sectionsByKey[key] || []).find(s => s.sectionName === e.target.value);
-                        if (sec && sec.strength) setPublishStudents(String(sec.strength));
-                      }}
-                      style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}
-                    >
+                        if (sec?.strength) setPublishStudents(String(sec.strength));
+                      }}>
                       <option value="">Select Section</option>
                       {(sectionsByKey[isSH ? selectedBranch : publishYear] || []).map(s => (
-                        <option key={s.id} value={s.sectionName}>
-                          {s.sectionName} {s.strength ? `(${s.strength} students)` : ''}
-                        </option>
+                        <option key={s.id} value={s.sectionName}>{s.sectionName} ({s.strength || 0} students)</option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Student Count */}
-                  {publishSection && (
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>👥 Total Students in Section {publishSection}</label>
-                      <input
-                        type="number" min="1" max="500"
-                        value={publishStudents}
-                        onChange={(e) => setPublishStudents(e.target.value)}
-                        placeholder="e.g. 65"
-                        style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Slot Selection with Locking */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '8px', color: '#374151' }}>Select Slot</label>
+                  {/* Slot selection — same logic as before */}
+                  <div className="form-field">
+                    <label>Select Slot</label>
                     {(() => {
-                      const targetYear = isSH ? 'I' : publishYear;
-                      const slot1Done = allBatches.some(b =>
-                        b.year === targetYear && b.sem === selectedSem && b.sec === publishSection && b.slot === 1
-                      );
-                      const slot2Done = allBatches.some(b =>
-                        b.year === targetYear && b.sem === selectedSem && b.sec === publishSection && b.slot === 2
-                      );
+                      const ty = isSH ? 'I' : publishYear;
+                      const s1done = allBatches.some(b => b.year === ty && b.sem === publishSem && b.sec === publishSection && b.slot === 1);
+                      const s2done = allBatches.some(b => b.year === ty && b.sem === publishSem && b.sec === publishSection && b.slot === 2);
                       return (
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <button
-                            type="button"
-                            onClick={() => !slot1Done && setSlotNumber(1)}
-                            disabled={slot1Done}
-                            style={{
-                              flex: 1, padding: '10px', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: slot1Done ? 'not-allowed' : 'pointer',
-                              border: slotNumber === 1 ? '2px solid #0ea5e9' : '2px solid #e2e8f0',
-                              background: slot1Done ? '#e2e8f0' : slotNumber === 1 ? 'linear-gradient(135deg,#0ea5e9,#06b6d4)' : '#f8fafc',
-                              color: slot1Done ? '#94a3b8' : slotNumber === 1 ? 'white' : '#2d3436',
-                            }}
-                          >
-                            {slot1Done ? '✅ Slot 1 Done' : '📋 Slot 1 (Previous)'}
+                        <div className="slot-btn-row">
+                          <button type="button" disabled={s1done}
+                            className={`slot-btn ${slotNumber === 1 && !s1done ? 'active' : ''} ${s1done ? 'done' : ''}`}
+                            onClick={() => !s1done && setSlotNumber(1)}>
+                            {s1done ? '✅ Slot 1 Done' : '📋 Slot 1 — Previous'}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => !slot2Done && slot1Done && setSlotNumber(2)}
-                            disabled={!slot1Done || slot2Done}
-                            style={{
-                              flex: 1, padding: '10px', borderRadius: '10px', fontWeight: '700', fontSize: '13px',
-                              cursor: (!slot1Done || slot2Done) ? 'not-allowed' : 'pointer',
-                              border: slotNumber === 2 ? '2px solid #0ea5e9' : '2px solid #e2e8f0',
-                              background: slot2Done ? '#e2e8f0' : !slot1Done ? '#f8fafc' : slotNumber === 2 ? 'linear-gradient(135deg,#0ea5e9,#06b6d4)' : '#f8fafc',
-                              color: (slot2Done || !slot1Done) ? '#94a3b8' : slotNumber === 2 ? 'white' : '#2d3436',
-                            }}
-                          >
-                            {slot2Done ? '✅ Slot 2 Done' : !slot1Done ? '🔒 Slot 2 (Locked)' : '📋 Slot 2 (Latest)'}
+                          <button type="button" disabled={!s1done || s2done}
+                            className={`slot-btn ${slotNumber === 2 ? 'active' : ''} ${s2done ? 'done' : ''}`}
+                            onClick={() => s1done && !s2done && setSlotNumber(2)}>
+                            {s2done ? '✅ Slot 2 Done' : !s1done ? '🔒 Slot 2 (Locked)' : '📋 Slot 2 — Latest'}
                           </button>
                         </div>
                       );
                     })()}
                   </div>
 
-                  {/* Dates */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>Start Date</label>
-                      <input type="date" value={slotStartDate} onChange={(e) => setSlotStartDate(e.target.value)}
-                        style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }} required />
+                  <div className="date-row">
+                    <div className="form-field">
+                      <label>Start Date</label>
+                      <input type="date" value={slotStartDate} onChange={e => setSlotStartDate(e.target.value)} />
                     </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#374151' }}>End Date</label>
-                      <input type="date" value={slotEndDate} onChange={(e) => setSlotEndDate(e.target.value)} min={slotStartDate}
-                        style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }} required />
+                    <div className="form-field">
+                      <label>End Date</label>
+                      <input type="date" value={slotEndDate} min={slotStartDate} onChange={e => setSlotEndDate(e.target.value)} />
                     </div>
                   </div>
 
                   {slotStartDate && slotEndDate && (
-                    <div style={{ padding: '8px 12px', background: 'rgba(14,165,233,0.1)', borderRadius: '8px', fontSize: '12px', fontWeight: '600', color: '#0369a1' }}>
-                      ℹ️ Active from {new Date(slotStartDate).toLocaleDateString()} to {new Date(slotEndDate).toLocaleDateString()}
+                    <div className="date-preview">
+                      ℹ️ Active: {new Date(slotStartDate).toLocaleDateString('en-IN')} → {new Date(slotEndDate).toLocaleDateString('en-IN')}
                     </div>
                   )}
                 </div>
+              )}
 
-                {/* ── RIGHT PANEL ── */}
-                <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>
-                    👥 Select Faculty
-                    {publishYear && <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', marginLeft: '8px' }}>(Year {publishYear})</span>}
-                  </h3>
-                  <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#64748b' }}>
-                    {selectedFacultyIds.length} selected
-                  </p>
-                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {(() => {
-                      const filtered = facultyList.filter(f => {
-  if (isSH) return f.branch === selectedBranch;
-  return publishYear ? f.year === publishYear : true;
-});
-                      if (filtered.length === 0) return (
-                        <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
-                          <div style={{ fontSize: '30px', marginBottom: '8px' }}>🧑‍🏫</div>
-                          <p style={{ fontSize: '13px' }}>No faculty found for selected year/semester</p>
-                        </div>
-                      );
-                      return filtered.map(faculty => (
-                        <div
-                          key={faculty.id}
-                          onClick={() => {
-                            setSelectedFacultyIds(prev =>
-                              prev.includes(faculty.id) ? prev.filter(id => id !== faculty.id) : [...prev, faculty.id]
-                            );
-                          }}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px',
-                            borderRadius: '10px', cursor: 'pointer', border: '2px solid',
-                            borderColor: selectedFacultyIds.includes(faculty.id) ? '#0ea5e9' : '#e2e8f0',
-                            background: selectedFacultyIds.includes(faculty.id) ? 'rgba(14,165,233,0.08)' : '#f8fafc',
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          <input type="checkbox" checked={selectedFacultyIds.includes(faculty.id)} onChange={() => {}} style={{ accentColor: '#0ea5e9' }} />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>{faculty.name}</div>
-                            <div style={{ fontSize: '12px', color: '#64748b' }}>{faculty.code} • {faculty.subject}</div>
-                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Year {faculty.year} • Sem {faculty.sem}</div>
-                          </div>
-                        </div>
-                      ));
-                    })()}
+              {publishStep === 2 && (
+                <div className="modal-body">
+                  <div className="publish-review-meta">
+                    <span>📅 Year <strong>{publishYear}</strong> · Sem <strong>{publishSem}</strong> · Sec <strong>{publishSection}</strong></span>
+                    <span>📌 Slot {slotNumber} · {slotStartDate} → {slotEndDate}</span>
                   </div>
+                  <p className="publish-review-hint">Uncheck any faculty you want to exclude from this link.</p>
+                  {publishSectionFaculty.length === 0 ? (
+                    <div className="publish-no-faculty">⚠️ No faculty assigned to this section for Semester {publishSem}.</div>
+                  ) : (
+                    <table className="publish-faculty-table">
+                      <thead>
+                        <tr><th>#</th><th>Faculty Name</th><th>Subject</th><th>Include</th></tr>
+                      </thead>
+                      <tbody>
+                        {publishSectionFaculty.map((f, i) => (
+                          <tr key={f.id} className={selectedFacultyIds.includes(f.id) ? 'row-selected' : ''}>
+                            <td>{i + 1}</td>
+                            <td>{f.name}</td>
+                            <td>{f.subject || '—'}</td>
+                            <td>
+                              <input type="checkbox"
+                                checked={selectedFacultyIds.includes(f.id)}
+                                onChange={() => setSelectedFacultyIds(prev =>
+                                  prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]
+                                )}
+                                style={{ accentColor: '#0ea5e9', width: 16, height: 16 }}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
-              </div>
+              )}
 
               <div className="modal-footer">
-                <button className="btn-confirm" onClick={confirmPublish} disabled={isPublishing}>
-                  {isPublishing ? '⏳ Publishing...' : '✅ Confirm & Publish'}
-                </button>
-                <button className="btn-modal-cancel" onClick={() => setShowModal(false)}>
-                  ❌ Cancel
-                </button>
+                {publishStep === 1 ? (
+                  <>
+                    <button className="btn-confirm" onClick={handlePublishProceed}>Proceed →</button>
+                    <button className="btn-modal-cancel" onClick={() => setShowModal(false)}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <button className="btn-confirm" onClick={confirmPublish} disabled={isPublishing}>
+                      {isPublishing ? '⏳ Publishing…' : '✅ Confirm & Publish'}
+                    </button>
+                    <button className="btn-modal-cancel" onClick={() => setPublishStep(1)}>← Back</button>
+                  </>
+                )}
               </div>
             </div>
           </div>
         )}
 
-{/* ── Assign Faculty Modal ── */}
-      {showAssignModal && assigningFaculty && (
-        <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '420px', height: 'auto', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>📌 Assign Faculty</h2>
-              <p>Assigning <strong>{assigningFaculty.name}</strong> ({assigningFaculty.code}) to a year/section</p>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {!isSH && (
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '5px' }}>Year</label>
-                  <select value={assignYear} onChange={e => { setAssignYear(e.target.value); setAssignSection(''); }}
-                    style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}>
-                    <option value="">Select Year</option>
-                    {availableYears.map(y => <option key={y} value={y}>Year {y}</option>)}
-                  </select>
-                </div>
-              )}
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '5px' }}>Semester</label>
-                <select value={assignSem} onChange={e => setAssignSem(e.target.value)}
-                  style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}>
-                  <option value="">Select Semester</option>
-                  {SEMESTERS.map(s => <option key={s} value={s}>Semester {s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '5px' }}>Section</label>
-                <select value={assignSection} onChange={e => setAssignSection(e.target.value)}
-                  style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}>
-                  <option value="">Select Section</option>
-                  {(sectionsByKey[isSH ? selectedBranch : assignYear] || []).map(s => (
-                    <option key={s.id} value={s.sectionName}>{s.sectionName}</option>
+        {/* ══════════════════════════════════════════
+            ASSIGN FACULTY MODAL (Multi-step) — Req 6
+        ══════════════════════════════════════════ */}
+        {showAssignModal && (
+          <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
+            <div className="modal-content assign-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📌 Assign Faculty</h2>
+                <div className="step-indicator">
+                  {[1, 2, 3].map(n => (
+                    <div key={n} className={`step-dot ${assignStep === n ? 'active' : assignStep > n ? 'done' : ''}`}>
+                      {assignStep > n ? '✓' : n}
+                    </div>
                   ))}
-                  <option value="__custom__">+ Type custom section</option>
-                </select>
-                {assignSection === '__custom__' && (
-                  <input type="text" placeholder="Type section name"
-                    onChange={e => setAssignSection(e.target.value)}
-                    style={{ width: '100%', padding: '9px', border: '2px solid #3b82f6', borderRadius: '8px', fontSize: '14px', fontWeight: '600', marginTop: '8px', boxSizing: 'border-box' }} />
+                </div>
+                <p>
+                  {assignStep === 1 && 'Select Year & Semester'}
+                  {assignStep === 2 && 'Enter subjects taught this semester'}
+                  {assignStep === 3 && 'Assign faculty for each subject & section'}
+                </p>
+              </div>
+
+              <div className="modal-body">
+                {/* Step 1 */}
+                {assignStep === 1 && (
+                  <div className="assign-step">
+                    {!isSH && (
+                      <div className="form-field">
+                        <label>Year</label>
+                        <select value={assignYear} onChange={e => { setAssignYear(e.target.value); setAssignRows([]); }}>
+                          <option value="">Select Year</option>
+                          {availableYears.map(y => <option key={y} value={y}>Year {y}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div className="form-field">
+                      <label>Semester</label>
+                      <select value={assignSem} onChange={e => setAssignSem(e.target.value)}>
+                        <option value="">Select Semester</option>
+                        {SEMESTERS.map(s => <option key={s} value={s}>Semester {s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 2 */}
+                {assignStep === 2 && (
+                  <div className="assign-step">
+                    <div className="step-context-badge">
+                      {!isSH && `Year ${assignYear} · `}Semester {assignSem}
+                    </div>
+                    <div className="form-field">
+                      <label>How many subjects this semester?</label>
+                      <input type="number" min="1" max="10"
+                        value={assignSubjectCount}
+                        onChange={e => {
+                          const n = Math.max(1, Math.min(10, parseInt(e.target.value) || 1));
+                          setAssignSubjectCount(n);
+                          setAssignSubjectNames(prev => {
+                            const a = [...prev];
+                            while (a.length < n) a.push('');
+                            return a.slice(0, n);
+                          });
+                        }}
+                        className="subject-count-input"
+                      />
+                    </div>
+                    <div className="subject-inputs-list">
+                      {Array.from({ length: assignSubjectCount }, (_, i) => (
+                        <div className="form-field" key={i}>
+                          <label>Subject {i + 1}</label>
+                          <input type="text"
+                            placeholder={`e.g. ${['Data Structures', 'Computer Networks', 'DBMS', 'OS', 'Algorithms'][i] || 'Subject Name'}`}
+                            value={assignSubjectNames[i] || ''}
+                            onChange={e => {
+                              const a = [...assignSubjectNames];
+                              a[i] = e.target.value;
+                              setAssignSubjectNames(a);
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3 */}
+                {assignStep === 3 && (
+                  <div className="assign-step">
+                    <div className="step-context-badge">
+                      {!isSH && `Year ${assignYear} · `}Semester {assignSem} — {assignRows.length} subject{assignRows.length !== 1 ? 's' : ''}
+                    </div>
+                    <div className="assign-rows-list">
+                      {assignRows.map((row, i) => (
+                        <div key={i} className="assign-row-card">
+                          <div className="arc-subject">{row.subjectName}</div>
+                          <div className="arc-selects">
+                            <div>
+                              <label>Section</label>
+                              <select value={row.section}
+                                onChange={e => {
+                                  const a = [...assignRows];
+                                  a[i] = { ...a[i], section: e.target.value };
+                                  setAssignRows(a);
+                                }}>
+                                <option value="">— Section —</option>
+                                {(sectionsByKey[isSH ? selectedBranch : assignYear] || []).map(s => (
+                                  <option key={s.id} value={s.sectionName}>{s.sectionName}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label>Faculty</label>
+                              <select value={row.facultyId}
+                                onChange={e => {
+                                  const a = [...assignRows];
+                                  a[i] = { ...a[i], facultyId: e.target.value };
+                                  setAssignRows(a);
+                                }}>
+                                <option value="">— Faculty —</option>
+                                {globalFacultyPool.map(f => (
+                                  <option key={f.id} value={f.id}>{f.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '700', color: '#374151', display: 'block', marginBottom: '5px' }}>Subject Teaching</label>
-                <input type="text" placeholder="e.g. Data Structures, Physics"
-                  value={assignSubject} onChange={e => setAssignSubject(e.target.value)}
-                  style={{ width: '100%', padding: '9px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontWeight: '600', boxSizing: 'border-box' }} />
+
+              <div className="modal-footer">
+                {assignStep === 1 && (
+                  <>
+                    <button className="btn-confirm" onClick={handleAssignStep1}>Next →</button>
+                    <button className="btn-modal-cancel" onClick={() => setShowAssignModal(false)}>Cancel</button>
+                  </>
+                )}
+                {assignStep === 2 && (
+                  <>
+                    <button className="btn-confirm" onClick={handleAssignStep2}>Next →</button>
+                    <button className="btn-modal-cancel" onClick={() => setAssignStep(1)}>← Back</button>
+                  </>
+                )}
+                {assignStep === 3 && (
+                  <>
+                    <button className="btn-confirm" onClick={handleAssignFaculty} disabled={isAssigning}>
+                      {isAssigning ? '⏳ Assigning…' : '✅ Assign All'}
+                    </button>
+                    <button className="btn-modal-cancel" onClick={() => setAssignStep(2)}>← Back</button>
+                  </>
+                )}
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn-confirm" onClick={handleAssignFaculty} disabled={isAssigning}>
-                {isAssigning ? '⏳ Assigning...' : '✅ Assign Faculty'}
-              </button>
-              <button className="btn-modal-cancel" onClick={() => setShowAssignModal(false)}>Cancel</button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ── Manage Sections Modal (Central Setup) ── */}
-      {showSectionModal && (
-        <div className="modal-overlay" onClick={() => setShowSectionModal(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '720px', width: '95%', height: '88vh', maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', borderRadius: '16px' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <h2>🗂️ Manage Class Sections</h2>
-              <p>
-                {isSH
-                  ? 'Add sections under each department for 1st year students.'
-                  : `Add sections for each year. ${TWO_YEAR_DEPTS.includes(currentUser?.department) ? 'Years I & II only.' : 'Years II, III & IV.'}`}
-              </p>
-            </div>
+        {/* ══════════════════════════════════════════
+            MANAGE SECTIONS MODAL — Req 2
+        ══════════════════════════════════════════ */}
+        {showSectionModal && (
+          <div className="modal-overlay" onClick={() => setShowSectionModal(false)}>
+            <div className="modal-content sections-modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>🗂️ Manage Class Sections</h2>
+                <p>
+                  {isSH
+                    ? 'Set up sections per department for 1st year.'
+                    : `Configure sections for each year. ${TWO_YEAR_DEPTS.includes(currentUser?.department) ? 'Years I & II only.' : 'Years II, III & IV.'}`}
+                </p>
+              </div>
 
-           <div className="modal-body" style={{ overflowY: 'auto', flex: 1, padding: '20px', scrollbarWidth: 'thin', scrollbarColor: '#667eea #f1f5f9' }}>
-              {/* Loop over each year/branch key */}
-              {(isSH ? availableBranches : availableYears).map(key => (
-                <div key={key} style={{ marginBottom: '24px', border: '2px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden' }}>
-
-                  {/* Section group header */}
-                  <div style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'white', fontWeight: '800', fontSize: '14px' }}>
-                      {isSH ? `📖 ${key} Department` : `📅 Year ${key}`}
-                    </span>
-                    <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '12px', fontWeight: '600' }}>
-                      {(sectionsByKey[key] || []).length} section{(sectionsByKey[key] || []).length !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-
-                  <div style={{ padding: '14px 16px' }}>
-                    {/* Existing sections */}
-                    {(sectionsByKey[key] || []).length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+              <div className="modal-body sections-modal-body">
+                {(isSH ? availableBranches : availableYears).map(key => (
+                  <div key={key} className="syb-block">
+                    <div className="syb-header">
+                      <span>{isSH ? `📖 ${key}` : `📅 Year ${key}`}</span>
+                      <span className="syb-count">
+                        {(sectionsByKey[key] || []).length} section{(sectionsByKey[key] || []).length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div className="syb-body">
+                      {/* Existing section chips */}
+                      <div className="existing-chips">
+                        {(sectionsByKey[key] || []).length === 0 && (
+                          <span className="no-secs">No sections yet.</span>
+                        )}
                         {(sectionsByKey[key] || []).map(s => (
-                          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f1f5f9', borderRadius: '20px', border: '2px solid #e2e8f0' }}>
-                            <span style={{ fontWeight: '800', color: '#1e293b', fontSize: '13px' }}>{s.sectionName}</span>
+                          <div key={s.id} className="esc-chip">
+                            <span className="esc-name">{s.sectionName}</span>
                             {editingStrengthId === s.id ? (
                               <>
-                                <input
-                                  type="number"
-                                  value={editingStrengthVal}
+                                <input type="number" value={editingStrengthVal}
                                   onChange={e => setEditingStrengthVal(e.target.value)}
-                                  style={{ width: '60px', padding: '2px 6px', border: '2px solid #667eea', borderRadius: '6px', fontWeight: '700', fontSize: '12px' }}
-                                  autoFocus
-                                />
-                                <button
-                                  type="button"
+                                  className="esc-str-input" autoFocus />
+                                <button type="button" className="esc-btn esc-save"
                                   onClick={async () => {
                                     await sectionAPI.update(s.id, { strength: Number(editingStrengthVal) });
                                     setSections(prev => prev.map(x => x.id === s.id ? { ...x, strength: Number(editingStrengthVal) } : x));
                                     setEditingStrengthId(null);
-                                  }}
-                                  style={{ padding: '2px 8px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
-                                >✓</button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingStrengthId(null)}
-                                  style={{ padding: '2px 6px', background: '#94a3b8', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
-                                >✕</button>
+                                  }}>✓</button>
+                                <button type="button" className="esc-btn esc-cancel"
+                                  onClick={() => setEditingStrengthId(null)}>✕</button>
                               </>
                             ) : (
-                              <span
-                                title="Click to edit strength"
-                                onClick={() => { setEditingStrengthId(s.id); setEditingStrengthVal(String(s.strength || 0)); }}
-                                style={{ cursor: 'pointer', padding: '2px 8px', background: '#fef9c3', borderRadius: '6px', fontWeight: '700', fontSize: '12px', color: '#854d0e' }}
-                              >
-                                {s.strength || 0} 👤
+                              <span className="esc-strength" title="Click to edit"
+                                onClick={() => { setEditingStrengthId(s.id); setEditingStrengthVal(String(s.strength || 0)); }}>
+                                {s.strength || 0}👤
                               </span>
                             )}
-                            <button
-                              type="button"
+                            <button type="button" className="esc-btn esc-delete"
                               onClick={async () => {
                                 if (!window.confirm(`Delete section "${s.sectionName}"?`)) return;
                                 await sectionAPI.delete(s.id);
                                 setSections(prev => prev.filter(x => x.id !== s.id));
-                                if (isSH) { if (selectedSHSection === s.sectionName) setSelectedSHSection(null); }
-                                else { if (selectedSection === s.sectionName) setSelectedSection(null); }
-                              }}
-                              style={{ padding: '2px 6px', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' }}
-                            >🗑</button>
+                              }}>🗑</button>
                           </div>
                         ))}
                       </div>
-                    )}
 
-                    {/* Add new section inline */}
-                    {(() => {
-                      const formKey = `${key}`;
-                      return (
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                          <div style={{ flex: '2', minWidth: '120px' }}>
-                            <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px' }}>Section Name</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. A, B, CSE-DS"
-                              value={sectionForm.key === formKey ? (sectionForm.sectionName || '') : ''}
-                          onChange={e => setSectionForm({ key: formKey, sectionName: e.target.value, strength: sectionForm.key === formKey ? (sectionForm.strength || '') : '', year: isSH ? 'I' : key, branch: isSH ? key : '', applyAll: sectionForm.key === formKey ? (sectionForm.applyAll || false) : false })}
-                              style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }}
-                            />
-                          </div>
-                          <div style={{ flex: '1', minWidth: '80px' }}>
-                            <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px' }}>Strength</label>
-                            <input
-                              type="number"
-                              placeholder="0"
-                             value={sectionForm.key === formKey ? (sectionForm.strength || '') : ''}
-                          onChange={e => setSectionForm(f => ({ ...f, key: formKey, strength: e.target.value }))}
-                              style={{ width: '100%', padding: '8px 10px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontWeight: '600', boxSizing: 'border-box' }}
-                            />
-                          </div>
-                          {!isSH && (
-                            <div style={{ flex: '1.5', minWidth: '120px', display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '2px' }}>
-                              <input
-                                type="checkbox"
-                                id={`applyAll_${key}`}
-                                checked={!!(sectionForm.key === formKey && sectionForm.applyAll)}
-                              onChange={e => setSectionForm(f => ({ ...f, key: formKey, applyAll: e.target.checked }))}
-                                style={{ accentColor: '#667eea', width: '14px', height: '14px' }}
-                              />
-                              <label htmlFor={`applyAll_${key}`} style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', cursor: 'pointer' }}>
-                                Add to all years
-                              </label>
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              setSectionError('');
-                              const name = (sectionForm.key === formKey ? sectionForm.sectionName : '').trim();
-                              const strength = Number(sectionForm.key === formKey ? sectionForm.strength : 0) || 0;
-                              const applyAll = sectionForm.key === formKey ? !!sectionForm.applyAll : false;
-                              if (!name) { setSectionError('Section name required'); return; }
-
-                              try {
-                                if (!isSH && applyAll) {
-                                  // Add to all years with same name but individual strength
-                                  const newSections = [];
-                                  for (const yr of availableYears) {
-                                    const res = await sectionAPI.create({
-                                      year: yr,
-                                      branch: '',
-                                      sectionName: name,
-                                      strength: strength,
-                                    });
-                                    newSections.push(res.data.section);
-                                  }
-                                  setSections(prev => [...prev, ...newSections]);
-                                } else {
-                                  const res = await sectionAPI.create({
-                                    year: isSH ? 'I' : key,
-                                    branch: isSH ? key : '',
-                                    sectionName: name,
-                                    strength: strength,
-                                  });
-                                  setSections(prev => [...prev, res.data.section]);
+                      {/* Add new section row */}
+                      <div className="add-sec-row">
+                        <input type="text" placeholder="Name (e.g. A, B, CSE-A)"
+                          value={sectionForm.key === key ? sectionForm.sectionName : ''}
+                          onChange={e => setSectionForm({ key, sectionName: e.target.value, strength: sectionForm.key === key ? sectionForm.strength : '', applyAll: sectionForm.key === key ? sectionForm.applyAll : false })}
+                          className="add-sec-name"
+                        />
+                        <input type="number" placeholder="Strength"
+                          value={sectionForm.key === key ? sectionForm.strength : ''}
+                          onChange={e => setSectionForm(f => ({ ...f, key, strength: e.target.value }))}
+                          className="add-sec-strength"
+                        />
+                        {!isSH && (
+                          <label className="apply-all-lbl">
+                            <input type="checkbox"
+                              checked={!!(sectionForm.key === key && sectionForm.applyAll)}
+                              onChange={e => setSectionForm(f => ({ ...f, key, applyAll: e.target.checked }))} />
+                            All years
+                          </label>
+                        )}
+                        <button type="button" className="btn-add-sec"
+                          onClick={async () => {
+                            setSectionError('');
+                            const name = (sectionForm.key === key ? sectionForm.sectionName : '').trim();
+                            const strength = Number(sectionForm.key === key ? sectionForm.strength : 0) || 0;
+                            const applyAll = sectionForm.key === key ? !!sectionForm.applyAll : false;
+                            if (!name) { setSectionError('Section name is required.'); return; }
+                            try {
+                              if (!isSH && applyAll) {
+                                const newSecs = [];
+                                for (const yr of availableYears) {
+                                  const res = await sectionAPI.create({ year: yr, branch: '', sectionName: name, strength });
+                                  newSecs.push(res.data.section);
                                 }
-                                setSectionForm(f => ({ ...f, key: null, sectionName: '', strength: '', applyAll: false }));
-                              } catch (err) {
-                                setSectionError(err.response?.data?.error || 'Failed to add section');
+                                setSections(prev => [...prev, ...newSecs]);
+                              } else {
+                                const res = await sectionAPI.create({ year: isSH ? 'I' : key, branch: isSH ? key : '', sectionName: name, strength });
+                                setSections(prev => [...prev, res.data.section]);
                               }
-                            }}
-                            style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}
-                          >
-                            + Add
-                          </button>
-                        </div>
-                      );
-                    })()}
-                    {sectionError && <p style={{ color: '#ef4444', fontSize: '12px', fontWeight: '700', marginTop: '6px' }}>{sectionError}</p>}
+                              setSectionForm({ key: null, sectionName: '', strength: '', applyAll: false });
+                            } catch (err) {
+                              setSectionError(err.response?.data?.error || 'Failed to add section.');
+                            }
+                          }}>
+                          + Add
+                        </button>
+                      </div>
+                      {sectionError && sectionForm.key === key && (
+                        <p className="sec-err">{sectionError}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
 
-            <div className="modal-footer" style={{ borderTop: '2px solid #e2e8f0', padding: '14px 20px', flexShrink: 0, background: '#f8fafc' }}>
-              <button type="button" className="btn-confirm" onClick={() => setShowSectionModal(false)}>
-                ✅ Done
-              </button>
+              <div className="modal-footer">
+                <button type="button" className="btn-confirm" onClick={() => setShowSectionModal(false)}>✅ Done</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-
-{showDeleteAccountModal && (
+        {/* ── Delete Account Modal ── */}
+        {showDeleteAccountModal && (
           <div className="modal-overlay" style={{ zIndex: 9999 }}>
-            <div className="modal-content" style={{ maxWidth: '420px' }}>
-              <div className="modal-header">
-                <h3>🗑️ Delete Account</h3>
-              </div>
+            <div className="modal-content" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header"><h3>🗑️ Delete Account</h3></div>
               <div style={{ padding: '20px' }}>
-                <div style={{
-                  background: '#FFF3CD', border: '1px solid #FFC107',
-                  borderRadius: '8px', padding: '12px 16px',
-                  marginBottom: '16px', fontSize: '13px', color: '#856404',
-                }}>
-                  ⚠️ This will permanently delete your account for <strong>{currentUser.department} — {currentUser.college}</strong>. This cannot be undone. A new HoD can register for this department afterward.
+                <div className="delete-warn-box">
+                  ⚠️ This will permanently delete the HoD account for <strong>{currentUser.department} — {currentUser.college}</strong>. This action cannot be undone.
                 </div>
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={{ fontWeight: 'bold', marginBottom: '6px', display: 'block' }}>
-                    Confirm your password to proceed:
-                  </label>
-                  <input
-                    type="password"
-                    value={deleteAccountPassword}
-                    onChange={(e) => { setDeleteAccountPassword(e.target.value); setDeleteAccountError(''); }}
-                    placeholder="Enter your current password"
-                    autoComplete="current-password"
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
+                <div className="form-field" style={{ margin: '14px 0' }}>
+                  <label>Enter your password to confirm:</label>
+                  <input type="password" value={deleteAccountPassword}
+                    onChange={e => { setDeleteAccountPassword(e.target.value); setDeleteAccountError(''); }}
+                    placeholder="Current password" autoComplete="current-password" />
                 </div>
-                {deleteAccountError && (
-                  <div style={{ color: '#e74c3c', fontSize: '13px', marginBottom: '12px', fontWeight: 'bold' }}>
-                    ⚠️ {deleteAccountError}
-                  </div>
-                )}
+                {deleteAccountError && <div className="delete-error">⚠️ {deleteAccountError}</div>}
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    onClick={handleDeleteAccount}
-                    disabled={isDeletingAccount}
-                    style={{
-                      flex: 1, padding: '10px', border: 'none', borderRadius: '8px',
-                      fontWeight: 'bold', fontSize: '14px',
-                      background: isDeletingAccount ? '#ccc' : '#e74c3c',
-                      color: '#fff', cursor: isDeletingAccount ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {isDeletingAccount ? 'Deleting...' : '🗑️ Yes, Delete My Account'}
+                  <button onClick={handleDeleteAccount} disabled={isDeletingAccount}
+                    style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '8px', fontWeight: '700', background: isDeletingAccount ? '#ccc' : '#e74c3c', color: '#fff', cursor: isDeletingAccount ? 'not-allowed' : 'pointer' }}>
+                    {isDeletingAccount ? 'Deleting…' : '🗑️ Yes, Delete'}
                   </button>
-                  <button
-                    onClick={() => setShowDeleteAccountModal(false)}
-                    disabled={isDeletingAccount}
-                    style={{ flex: 1, padding: '10px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}
-                  >
-                    Cancel
-                  </button>
+                  <button onClick={() => setShowDeleteAccountModal(false)} disabled={isDeletingAccount}
+                    className="btn-modal-cancel">Cancel</button>
                 </div>
               </div>
             </div>
@@ -1468,5 +1308,28 @@ console.error('PDF error:', err);
     </>
   );
 };
+
+/* ─────────────────────────────────────────────
+   Faculty Card (extracted for cleanliness)
+───────────────────────────────────────────── */
+function FacultyCard({ f, onDelete, onPDF, onExcel }) {
+  return (
+    <div className="faculty-card">
+      <div className="faculty-info">
+        <div className="faculty-code">{f.code}</div>
+        <div className="faculty-details">
+          <div className="faculty-name">{f.name}</div>
+          <div className="faculty-subject">{f.subject}</div>
+          <div className="faculty-badge">Year {f.year} • Sem {f.semester || f.sem} • Sec {f.section || f.sec}</div>
+        </div>
+      </div>
+      <div className="faculty-actions">
+        <button type="button" className="btn-icon delete" onClick={() => onDelete(f.id)} title="Remove">🗑️</button>
+        <button type="button" className="btn-icon" onClick={() => onPDF(f)} title="PDF" style={{ background: 'rgba(239,68,68,0.1)' }}>📄</button>
+        <button type="button" className="btn-icon" onClick={() => onExcel(f)} title="Excel" style={{ background: 'rgba(16,185,129,0.1)' }}>📊</button>
+      </div>
+    </div>
+  );
+}
 
 export default HoDDashboard;
