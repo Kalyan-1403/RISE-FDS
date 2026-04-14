@@ -112,10 +112,9 @@ const HoDDashboard = () => {
     if (!currentUser) return;
     try {
       const dashData = await dataService.getHoDDashboard();
-      if (dashData.faculty) {
-        setFacultyList((dashData.faculty || []).map(normalizeFaculty));
-      }
-      if (dashData.batches) setAllBatches(dashData.batches);
+      // FIX: Check if it exists, don't check length. This allows the array to be emptied!
+      if (dashData.faculty !== undefined) setFacultyList(dashData.faculty);
+      if (dashData.batches !== undefined) setAllBatches(dashData.batches);
     } catch (e) {
       console.warn('Backend unavailable, using cached data');
     }
