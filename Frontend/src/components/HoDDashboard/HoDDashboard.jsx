@@ -114,10 +114,13 @@ const HoDDashboard = () => {
   });
   const [hintVisible, setHintVisible] = useState(true);
 
-  useEffect(() => {
-    let lastScrollY = window.scrollY;
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
+ useEffect(() => {
+    let lastScrollY = 0;
+    
+    const handleScroll = (e) => {
+      // Smart check: gets the scroll position from the window OR the specific div that is scrolling
+      const currentScrollY = window.scrollY || (e.target && e.target.scrollTop) || 0;
+      
       if (currentScrollY < 50) {
         setHintVisible(true); // Always show at the top
       } else if (currentScrollY > lastScrollY + 10) {
@@ -125,10 +128,13 @@ const HoDDashboard = () => {
       } else if (currentScrollY < lastScrollY - 10) {
         setHintVisible(true); // Show when scrolling UP
       }
+      
       lastScrollY = currentScrollY;
     };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+
+    // The 'true' at the end turns on Capture Mode. It listens to EVERY scrolling container on the page!
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
   }, []);
 
   const dismissScrollHint = () => {
