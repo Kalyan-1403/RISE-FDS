@@ -108,8 +108,15 @@ const HoDDashboard = () => {
   }, []);
 
   // NEW: Scroll Hint State & Listener
-  const [hintDismissed, setHintDismissed] = useState(false);
+  const [hintDismissed, setHintDismissed] = useState(() => {
+    return sessionStorage.getItem('hodScrollHintClosed') === 'true';
+  });
   const [isScrolledDown, setIsScrolledDown] = useState(false);
+
+  const dismissScrollHint = () => {
+    setHintDismissed(true);
+    sessionStorage.setItem('hodScrollHintClosed', 'true');
+  };
 
   useEffect(() => {
     const handleScroll = () => setIsScrolledDown(window.scrollY > 150);
@@ -123,9 +130,16 @@ const HoDDashboard = () => {
     if (!currentUser) return;
     try {
       const dashData = await dataService.getHoDDashboard();
-      // FIX: Check if it exists, and map through normalizeFaculty!
-      if (dashData.faculty !== undefined) setFacultyList(dashData.faculty.map(normalizeFaculty));
-      if (dashData.batches !== undefined) setAllBatches(dashData.batches);
+      if (dashData.faculty !== undefined) {
+        // FIX: Deep comparison to prevent massive React re-renders every 30 seconds
+        setFacultyList(prev => {
+          const newData = dashData.faculty.map(normalizeFaculty);
+          return JSON.stringify(prev) === JSON.stringify(newData) ? prev : newData;
+        });
+      }
+      if (dashData.batches !== undefined) {
+        setAllBatches(prev => JSON.stringify(prev) === JSON.stringify(dashData.batches) ? prev : dashData.batches);
+      }
     } catch (e) {
       console.warn('Backend unavailable, using cached data');
     }
@@ -420,13 +434,6 @@ const assignedCountBySec = useMemo(() => {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast({ show: false, message: '', type: 'error' })} />
-      
-      {!hintDismissed && !isScrolledDown && (
-        <div className="scroll-hint-card">
-          <span>👇 Scroll down for Published Links & Faculty Pool</span>
-          <button onClick={() => setHintDismissed(true)} title="Dismiss">✕</button>
-        </div>
-      )}
 
       <div className="dashboard-container">
 
@@ -1044,6 +1051,12 @@ const assignedCountBySec = useMemo(() => {
 
         <DeveloperCredit />
       </div>
+	 {!hintDismissed && !isScrolledDown && (
+        <div className="scroll-hint-card">
+          <span>👇 Scroll down for Published Links & Faculty Pool</span>
+          <button onClick={() => setHintDismissed(true)} title="Dismiss">✕</button>
+        </div>
+      )}
     </>
   );
 };
