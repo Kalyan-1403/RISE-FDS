@@ -507,25 +507,6 @@ const assignedCountBySec = useMemo(() => {
                 </button>
               </div>
 
-              {/* Pool strip */}
-              {globalFacultyPool.length > 0 && (
-                <div className="pool-strip">
-                  <span className="pool-strip-label">Pool ({globalFacultyPool.length}):</span>
-                  <div className="pool-chips-row">
-                    {globalFacultyPool.map(f => (
-                      <div key={f.id} className="pool-chip">
-                        <span className="chip-name">{f.name}</span>
-                        <button type="button" className="chip-btn chip-edit" title="Edit"
-                          onClick={() => { setNewFacultyName(f.name); setEditingId(f.id); }}>✏️</button>
-                        <button type="button" className="chip-btn chip-delete" title="Remove"
-                          onClick={() => deleteFaculty(f.id)}>🗑</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="divider" />
 
               {/* ── S&H Layout ── */}
               {isSH ? (
@@ -684,6 +665,38 @@ const assignedCountBySec = useMemo(() => {
                 </div>
               )}
           </section>
+        </section>
+
+          {/* ═══════════════ NEW POOL PANEL (GRID) ═══════════════ */}
+          <section className="panel pool-panel" style={{ marginTop: '24px' }}>
+            <div className="panel-header">
+              <h3>👥 Faculty Pool <span style={{ fontSize: '12px', background: '#e2e8f0', padding: '2px 8px', borderRadius: '10px', marginLeft: '8px', color: '#475569' }}>{globalFacultyPool.length} Unassigned</span></h3>
+            </div>
+            {!globalFacultyPool.length ? (
+              <div className="empty-state" style={{ padding: '30px' }}>
+                <span className="empty-icon">👥</span>
+                <p>No unassigned faculty in the pool.</p>
+              </div>
+            ) : (
+              <div className="pool-grid">
+                {globalFacultyPool.map(f => (
+                  <div key={f.id} className="pool-grid-card">
+                    <div className="pgc-left">
+                      <span className="pgc-name">{f.name}</span>
+                      <span className="pgc-code">{f.code}</span>
+                    </div>
+                    <div className="pgc-actions">
+                      <button type="button" className="pgc-btn chip-edit" title="Edit"
+                        onClick={() => { setNewFacultyName(f.name); setEditingId(f.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>✏️</button>
+                      <button type="button" className="pgc-btn chip-delete" title="Remove"
+                        onClick={() => deleteFaculty(f.id)}>🗑</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
         </main>
 
         {/* ═══════════════ PUBLISH MODAL ═══════════════ */}
