@@ -107,25 +107,39 @@ const HoDDashboard = () => {
     setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4500);
   }, []);
 
-  // NEW: Scroll Hint State & Listener
+// NEW: Smart Directional Scroll Hint
   const [hintDismissed, setHintDismissed] = useState(() => {
     return sessionStorage.getItem('hodScrollHintClosed') === 'true';
   });
-  const [isScrolledDown, setIsScrolledDown] = useState(false);
+  const [hintVisible, setHintVisible] = useState(true);
+
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      if (currentScrollY < 50) {
+        setHintVisible(true); // Always show at the very top
+      } else if (currentScrollY > lastScrollY + 10) {
+        setHintVisible(false); // Hide when scrolling DOWN
+      } else if (currentScrollY < lastScrollY - 10) {
+        setHintVisible(true); // Show when scrolling UP
+      }
+      
+      lastScrollY = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const dismissScrollHint = () => {
     setHintDismissed(true);
     sessionStorage.setItem('hodScrollHintClosed', 'true');
   };
 
-  useEffect(() => {
-    const handleScroll = () => setIsScrolledDown(window.scrollY > 150);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-
-/* ── Data loading ── */
+  /* ── Data loading ── */
   const loadDashboardData = useCallback(async () => {
     if (!currentUser) return;
     try {
@@ -434,6 +448,16 @@ const assignedCountBySec = useMemo(() => {
   return (
     <>
       <Toast toast={toast} onClose={() => setToast({ show: false, message: '', type: 'error' })} />
+
+      {/* FLOATING HINT: Safe placement at the root so it floats perfectly */}
+      {!hintDismissed && (
+        <div className={`scroll-hint-wrapper ${hintVisible ? 'visible' : 'hidden'}`}>
+          <div className="scroll-hint-card">
+            <span>👇 Scroll down for Published Links & Faculty Pool</span>
+            <button onClick={dismissScrollHint} title="Dismiss">✕</button>
+          </div>
+        </div>
+      )}
 
       <div className="dashboard-container">
 
@@ -1051,11 +1075,6 @@ const assignedCountBySec = useMemo(() => {
 
         <DeveloperCredit />
       </div>
-	 {!hintDismissed && !isScrolledDown && (
-        <div className="scroll-hint-card">
-          <span>👇 Scroll down for Published Links & Faculty Pool</span>
-          <button onClick={() => setHintDismissed(true)} title="Dismiss">✕</button>
-        </div>
       )}
     </>
   );

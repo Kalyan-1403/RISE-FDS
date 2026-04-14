@@ -843,12 +843,30 @@
 .pgc-btn.chip-delete { background: #fee2e2; color: #ef4444; }
 >>>>>>> d5b724a37fd237fa15122c5db52c59a39993fc8f
 
-/* ── Floating Scroll Hint ── */
-.scroll-hint-card {
+/* ── Floating Directional Scroll Hint ── */
+.scroll-hint-wrapper {
   position: fixed;
-  bottom: 40px;
+  bottom: 40px; /* Distance from the bottom of your screen */
   left: 50%;
-  transform: translateX(-50%);
+  z-index: 999999;
+  pointer-events: none; /* Let background clicks pass through empty space */
+  transition: opacity 0.4s ease, transform 0.4s ease, visibility 0.4s;
+}
+
+.scroll-hint-wrapper.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.scroll-hint-wrapper.hidden {
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 20px); /* Slides down slightly as it fades */
+}
+
+.scroll-hint-card {
+  pointer-events: auto; /* Re-enable clicks for the actual card */
   background: rgba(30, 41, 59, 0.95);
   color: white;
   padding: 12px 24px;
@@ -856,14 +874,13 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
-  z-index: 9999;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   font-size: 13px;
   font-weight: 700;
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,0.1);
-  animation: slideUpFade 0.4s ease-out;
 }
+
 .scroll-hint-card button {
   background: none;
   border: none;
@@ -875,11 +892,8 @@
   border-radius: 50%;
   transition: all 0.2s;
 }
-.scroll-hint-card button:hover { 
-  color: white; 
-  background: rgba(255,255,255,0.1); 
-}
-@keyframes slideUpFade {
-  from { opacity: 0; transform: translate(-50%, 20px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+
+.scroll-hint-card button:hover {
+  color: white;
+  background: rgba(255,255,255,0.15);
 }
