@@ -837,90 +837,32 @@
 }
 .pgc-btn:hover { transform: scale(1.1); }
 .pgc-btn.chip-edit { background: #fef9c3; color: #854d0e; }
-<<<<<<< HEAD
 .pgc-btn.chip-delete { background: #fee2e2; color: #ef4444; }
-=======
-.pgc-btn.chip-delete { background: #fee2e2; color: #ef4444; }
->>>>>>> d5b724a37fd237fa15122c5db52c59a39993fc8f
 
 /* ── Floating Directional Scroll Hint ── */
 .scroll-hint-wrapper {
-  position: fixed;
-  bottom: 40px; /* Distance from the bottom of your screen */
-  left: 50%;
-  z-index: 999999;
-  pointer-events: none; /* Let background clicks pass through empty space */
-  transition: opacity 0.4s ease, transform 0.4s ease, visibility 0.4s;
-}
-
-.scroll-hint-wrapper.visible {
-  opacity: 1;
-  visibility: visible;
-  transform: translate(-50%, 0);
-}
-
-.scroll-hint-wrapper.hidden {
-  opacity: 0;
-  visibility: hidden;
-  transform: translate(-50%, 20px); /* Slides down slightly as it fades */
-}
-
-.scroll-hint-card {
-  pointer-events: auto; /* Re-enable clicks for the actual card */
-  background: rgba(30, 41, 59, 0.95);
-  color: white;
-  padding: 12px 24px;
-  border-radius: 30px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-  font-size: 13px;
-  font-weight: 700;
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255,255,255,0.1);
-}
-
-.scroll-hint-card button {
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 50%;
-  transition: all 0.2s;
-}
-
-.scroll-hint-card button:hover {
-  color: white;
-  background: rgba(255,255,255,0.15);
-}
-/* ── Floating Directional Scroll Hint ── */
-.scroll-hint-wrapper {
-  position: fixed;
-  bottom: 40px; 
-  left: 50%;
-  z-index: 999999; /* Forces it above everything else */
+  position: fixed !important;
+  bottom: 40px !important;
+  left: 50% !important;
+  z-index: 2147483647 !important; /* Forces it to the absolute top layer */
   pointer-events: none; 
   transition: opacity 0.4s ease, transform 0.4s ease, visibility 0.4s;
 }
 
 .scroll-hint-wrapper.visible {
-  opacity: 1;
-  visibility: visible;
-  transform: translate(-50%, 0);
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: translate(-50%, 0) !important;
 }
 
 .scroll-hint-wrapper.hidden {
-  opacity: 0;
-  visibility: hidden;
-  transform: translate(-50%, 20px); 
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transform: translate(-50%, 25px) !important; /* Slides down smoothly when scrolling */
 }
 
 .scroll-hint-card {
-  pointer-events: auto; 
+  pointer-events: auto; /* Let the user click the button */
   background: rgba(30, 41, 59, 0.95);
   color: white;
   padding: 12px 24px;
@@ -940,11 +882,14 @@
   border: none;
   color: #94a3b8;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   padding: 4px 8px;
   border-radius: 50%;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .scroll-hint-card button:hover {

@@ -101,13 +101,7 @@ const HoDDashboard = () => {
   const [deleteErr,       setDeleteErr]       = useState('');
   const [isDeleting,      setIsDeleting]      = useState(false);
 
- const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
-  const showToast = useCallback((message, type = 'error') => {
-    setToast({ show: true, message, type });
-    setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4500);
-  }, []);
-
-/* ── Toast ── */
+ /* ── Toast ── */
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
   const showToast = useCallback((message, type = 'error') => {
     setToast({ show: true, message, type });
@@ -1080,7 +1074,6 @@ const assignedCountBySec = useMemo(() => {
 
         <DeveloperCredit />
       </div>
-      )}
     </>
   );
 };
