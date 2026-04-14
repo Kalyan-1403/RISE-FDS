@@ -135,10 +135,6 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 .config-panel {
-  height: calc(100vh - 120px);
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
-  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 13px;
@@ -147,9 +143,6 @@
 .config-panel::-webkit-scrollbar-thumb { background: linear-gradient(135deg, #ff6b9d, #feca57); border-radius: 10px; }
 
 .list-panel {
-  height: calc(100vh - 120px);
-  max-height: calc(100vh - 120px);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -294,7 +287,7 @@
 /* Body: year row + sections + faculty */
 .lp-body {
   display: flex; flex-direction: column;
-  flex: 1; min-height: 0; overflow: hidden;
+  flex: 1;
 }
 
 /* Year chips row */
@@ -329,7 +322,7 @@
 .lp-main-area {
   display: grid;
   grid-template-columns: 185px 1fr;
-  flex: 1; min-height: 0; overflow: hidden;
+  flex: 1;
 }
 
 /* ── Sections nav sidebar ── */
@@ -440,7 +433,6 @@
 
 /* ── Faculty main area ── */
 .fac-main {
-  overflow-y: auto; overflow-x: hidden;
   display: flex; flex-direction: column;
 }
 .fac-main::-webkit-scrollbar { width: 6px; }
@@ -812,3 +804,37 @@
   .panel { padding: 12px; }
   .slot-btn-row { flex-direction: column; }
 }
+
+/* ── New Pool Grid ── */
+.pool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.pool-grid-card {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; background: #f8fafc;
+  border: 2px solid #e2e8f0; border-radius: 12px; transition: all 0.2s;
+}
+.pool-grid-card:hover { 
+  border-color: #cbd5e1; 
+  transform: translateY(-2px); 
+  box-shadow: 0 6px 16px rgba(0,0,0,0.06); 
+}
+.pgc-left { display: flex; flex-direction: column; gap: 6px; }
+.pgc-name { font-size: 14px; font-weight: 800; color: #1e293b; }
+.pgc-code { 
+  font-size: 11px; font-weight: 800; color: #ff6b9d; 
+  background: linear-gradient(135deg, #ffeaa7, #fed6e3); 
+  padding: 3px 8px; border-radius: 6px; align-self: flex-start; 
+}
+.pgc-actions { display: flex; gap: 6px; }
+.pgc-btn {
+  width: 32px; height: 32px; border: none; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 14px; transition: transform 0.15s;
+}
+.pgc-btn:hover { transform: scale(1.1); }
+.pgc-btn.chip-edit { background: #fef9c3; color: #854d0e; }
+.pgc-btn.chip-delete { background: #fee2e2; color: #ef4444; }
