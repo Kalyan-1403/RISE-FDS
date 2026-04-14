@@ -897,3 +897,57 @@
   color: white;
   background: rgba(255,255,255,0.15);
 }
+/* ── Floating Directional Scroll Hint ── */
+.scroll-hint-wrapper {
+  position: fixed;
+  bottom: 40px; 
+  left: 50%;
+  z-index: 999999; /* Forces it above everything else */
+  pointer-events: none; 
+  transition: opacity 0.4s ease, transform 0.4s ease, visibility 0.4s;
+}
+
+.scroll-hint-wrapper.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.scroll-hint-wrapper.hidden {
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 20px); 
+}
+
+.scroll-hint-card {
+  pointer-events: auto; 
+  background: rgba(30, 41, 59, 0.95);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  font-size: 13px;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.scroll-hint-card button {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.scroll-hint-card button:hover {
+  color: white;
+  background: rgba(255,255,255,0.15);
+}

@@ -107,7 +107,14 @@ const HoDDashboard = () => {
     setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4500);
   }, []);
 
-// NEW: Smart Directional Scroll Hint
+/* ── Toast ── */
+  const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
+  const showToast = useCallback((message, type = 'error') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4000);
+  }, []);
+
+  /* ── 1. SMART SCROLL HINT STATE ── */
   const [hintDismissed, setHintDismissed] = useState(() => {
     return sessionStorage.getItem('hodScrollHintClosed') === 'true';
   });
@@ -115,21 +122,17 @@ const HoDDashboard = () => {
 
   useEffect(() => {
     let lastScrollY = window.scrollY;
-
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      
       if (currentScrollY < 50) {
-        setHintVisible(true); // Always show at the very top
+        setHintVisible(true); // Always show at the top
       } else if (currentScrollY > lastScrollY + 10) {
         setHintVisible(false); // Hide when scrolling DOWN
       } else if (currentScrollY < lastScrollY - 10) {
         setHintVisible(true); // Show when scrolling UP
       }
-      
       lastScrollY = currentScrollY;
     };
-
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
@@ -139,8 +142,10 @@ const HoDDashboard = () => {
     sessionStorage.setItem('hodScrollHintClosed', 'true');
   };
 
-  /* ── Data loading ── */
-  const loadDashboardData = useCallback(async () => {
+  /* ────────────────────────────────────────
+     Data loading
+  ──────────────────────────────────────── */  
+const loadDashboardData = useCallback(async () => {
     if (!currentUser) return;
     try {
       const dashData = await dataService.getHoDDashboard();
