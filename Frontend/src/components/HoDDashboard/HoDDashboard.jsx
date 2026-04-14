@@ -107,13 +107,13 @@ const HoDDashboard = () => {
     setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4500);
   }, []);
 
-  /* ── Data loading ── */
+/* ── Data loading ── */
   const loadDashboardData = useCallback(async () => {
     if (!currentUser) return;
     try {
       const dashData = await dataService.getHoDDashboard();
-      // FIX: Check if it exists, don't check length. This allows the array to be emptied!
-      if (dashData.faculty !== undefined) setFacultyList(dashData.faculty);
+      // FIX: Check if it exists, and map through normalizeFaculty!
+      if (dashData.faculty !== undefined) setFacultyList(dashData.faculty.map(normalizeFaculty));
       if (dashData.batches !== undefined) setAllBatches(dashData.batches);
     } catch (e) {
       console.warn('Backend unavailable, using cached data');
@@ -203,14 +203,14 @@ const HoDDashboard = () => {
     });
   }, [downloadYear, sectionsByKey, allBatches]);
 
-  const assignedCountBySec = useMemo(() => {
+const assignedCountBySec = useMemo(() => {
     const map = {};
     assignedFaculty.forEach(f => {
-      const k = `${f.year}__${f.sec}`;
+      const k = isSH ? `${f.branch}__${f.year}__${f.sec}` : `${f.year}__${f.sec}`;
       map[k] = (map[k] || 0) + 1;
     });
     return map;
-  }, [assignedFaculty]);
+  }, [assignedFaculty, isSH]);
 
   /* ── Pool handlers ── */
   const addOrUpdateFaculty = async () => {
@@ -219,7 +219,7 @@ const HoDDashboard = () => {
     if (!/^[A-Za-z\s.]+$/.test(trimmed)) { showToast('Name must contain only letters, spaces and dots.'); return; }
     const autoCode = trimmed.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 5);
     const payload = {
-      name: trimmed, subject: '', code: autoCode, year: '',
+      name: trimmed, subject: 'TBD', code: autoCode, year: '',
       branch: isSH ? (selectedBranch || '') : currentUser.department,
       sem: '', sec: '', dept: currentUser.department, college: currentUser.college,
     };
@@ -399,7 +399,11 @@ const HoDDashboard = () => {
 
   if (!currentUser) return null;
 
-  const secCount = (year, secName) => assignedCountBySec[`${year}__${secName}`] || 0;
+ // FIX: Allow passing the branch
+  const secCount = (year, secName, branch = '') => {
+    const k = isSH ? `${branch}__${year}__${secName}` : `${year}__${secName}`;
+    return assignedCountBySec[k] || 0;
+  };
 
   /* ═══════════════ RENDER ═══════════════ */
   return (
@@ -547,7 +551,7 @@ const HoDDashboard = () => {
                           </button>
                           {(sectionsByKey[selectedBranch] || []).map(s => (
                             <SectionNavItem key={s.id} s={s}
-                              count={secCount('I', s.sectionName)}
+                              count={secCount('I', s.sectionName, selectedBranch)}
                               isActive={selectedSHSection === s.sectionName}
                               isEditing={editingSection === s.id}
                               editName={editSectionName} editStrength={editSectionStrength}
