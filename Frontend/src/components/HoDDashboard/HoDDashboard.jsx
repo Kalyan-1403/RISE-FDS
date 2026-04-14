@@ -278,7 +278,8 @@ const assignedCountBySec = useMemo(() => {
     setIsAssigning(true);
     try {
       for (const row of assignRows) {
-        const faculty = globalFacultyPool.find(f => f.id === row.facultyId);
+        // FIX: Convert both IDs to strings so the dropdown value matches the database number
+        const faculty = globalFacultyPool.find(f => String(f.id) === String(row.facultyId));
         if (!faculty) continue;
         await dataService.createFaculty({
           name: faculty.name, subject: row.subjectName, code: faculty.code,
