@@ -837,4 +837,8 @@
 }
 .pgc-btn:hover { transform: scale(1.1); }
 .pgc-btn.chip-edit { background: #fef9c3; color: #854d0e; }
+<<<<<<< HEAD
 .pgc-btn.chip-delete { background: #fee2e2; color: #ef4444; }
+=======
+.pgc-btn.chip-delete { background: #fee2e2; color: #ef4444; }
+>>>>>>> d5b724a37fd237fa15122c5db52c59a39993fc8f
