@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify, g
 from ..extensions import db
 from ..models.faculty import Faculty
 from ..middleware.auth_middleware import require_role, require_auth
-from ..utils.validators import sanitize_string, validate_name, validate_subject, validate_code
+from ..utils.validators import sanitize_string, validate_name, validate_subject
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,6 @@ def create_faculty():
         return jsonify({"error": "Request body required"}), 400
 
     name = sanitize_string(data.get('name', ''), 150)
-    code = sanitize_string(data.get('code', ''), 20)
     subject = sanitize_string(data.get('subject', ''), 200)
     year = sanitize_string(data.get('year', ''), 10)
     sem = sanitize_string(data.get('sem', data.get('semester', '')), 10)
@@ -66,10 +65,6 @@ def create_faculty():
 
     # Validate inputs
     valid, msg = validate_name(name)
-    if not valid:
-        return jsonify({"error": msg}), 400
-
-    valid, msg = validate_code(code)
     if not valid:
         return jsonify({"error": msg}), 400
 
@@ -89,7 +84,6 @@ def create_faculty():
         return jsonify({"error": "College and department are required"}), 400
 
     faculty = Faculty(
-        code=code.upper(),
         name=name,
         subject=subject,
         year=year,
@@ -102,7 +96,7 @@ def create_faculty():
     db.session.add(faculty)
     db.session.commit()
 
-    logger.info(f"Faculty created: {faculty.code} by {user.user_id}")
+    logger.info(f"Faculty created: {faculty.name} by {user.user_id}")
 
     return jsonify({"success": True, "faculty": faculty.to_dict()}), 201
 
@@ -132,13 +126,6 @@ def update_faculty(faculty_id):
             return jsonify({"error": msg}), 400
         faculty.name = name
 
-    if 'code' in data:
-        code = sanitize_string(data['code'], 20)
-        valid, msg = validate_code(code)
-        if not valid:
-            return jsonify({"error": msg}), 400
-        faculty.code = code.upper()
-
     if 'subject' in data:
         subject = sanitize_string(data['subject'], 200)
         valid, msg = validate_subject(subject)
@@ -157,7 +144,7 @@ def update_faculty(faculty_id):
 
     db.session.commit()
 
-    logger.info(f"Faculty updated: {faculty.code} by {user.user_id}")
+    logger.info(f"Faculty updated: {faculty.name} by {user.user_id}")
 
     return jsonify({"success": True, "faculty": faculty.to_dict()}), 200
 
@@ -179,6 +166,6 @@ def delete_faculty(faculty_id):
     faculty.is_active = False
     db.session.commit()
 
-    logger.info(f"Faculty soft-deleted: {faculty.code} by {user.user_id}")
+    logger.info(f"Faculty soft-deleted: {faculty.name} by {user.user_id}")
 
     return jsonify({"success": True, "message": f"Faculty {faculty.name} deleted successfully"}), 200

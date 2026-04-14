@@ -101,11 +101,22 @@ const HoDDashboard = () => {
   const [deleteErr,       setDeleteErr]       = useState('');
   const [isDeleting,      setIsDeleting]      = useState(false);
 
-  const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
+ const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
   const showToast = useCallback((message, type = 'error') => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4500);
   }, []);
+
+  // NEW: Scroll Hint State & Listener
+  const [hintDismissed, setHintDismissed] = useState(false);
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolledDown(window.scrollY > 150);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
 
 /* ── Data loading ── */
   const loadDashboardData = useCallback(async () => {
@@ -213,13 +224,12 @@ const assignedCountBySec = useMemo(() => {
   }, [assignedFaculty, isSH]);
 
   /* ── Pool handlers ── */
-  const addOrUpdateFaculty = async () => {
+ const addOrUpdateFaculty = async () => {
     const trimmed = newFacultyName.trim();
     if (!trimmed) { showToast('Please enter the faculty full name.'); return; }
     if (!/^[A-Za-z\s.]+$/.test(trimmed)) { showToast('Name must contain only letters, spaces and dots.'); return; }
-    const autoCode = trimmed.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 5);
     const payload = {
-      name: trimmed, subject: 'TBD', code: autoCode, year: '',
+      name: trimmed, subject: 'TBD', year: '',
       branch: isSH ? (selectedBranch || '') : currentUser.department,
       sem: '', sec: '', dept: currentUser.department, college: currentUser.college,
     };
@@ -276,13 +286,13 @@ const assignedCountBySec = useMemo(() => {
       if (!row.facultyId) { showToast('Select a faculty for every row.'); return; }
     }
     setIsAssigning(true);
-    try {
+   try {
       for (const row of assignRows) {
-        // FIX: Convert both IDs to strings so the dropdown value matches the database number
         const faculty = globalFacultyPool.find(f => String(f.id) === String(row.facultyId));
         if (!faculty) continue;
         await dataService.createFaculty({
-          name: faculty.name, subject: row.subjectName, code: faculty.code,
+          // FIX: Removed faculty.code
+          name: faculty.name, subject: row.subjectName,
           year: isSH ? 'I' : assignYear,
           branch: isSH ? selectedBranch : currentUser.department,
           sem: assignSem, sec: row.section,
@@ -406,10 +416,17 @@ const assignedCountBySec = useMemo(() => {
     return assignedCountBySec[k] || 0;
   };
 
-  /* ═══════════════ RENDER ═══════════════ */
+/* ═══════════════ RENDER ═══════════════ */
   return (
     <>
       <Toast toast={toast} onClose={() => setToast({ show: false, message: '', type: 'error' })} />
+      
+      {!hintDismissed && !isScrolledDown && (
+        <div className="scroll-hint-card">
+          <span>👇 Scroll down for Published Links & Faculty Pool</span>
+          <button onClick={() => setHintDismissed(true)} title="Dismiss">✕</button>
+        </div>
+      )}
 
       <div className="dashboard-container">
 
@@ -682,7 +699,6 @@ const assignedCountBySec = useMemo(() => {
                   <div key={f.id} className="pool-grid-card">
                     <div className="pgc-left">
                       <span className="pgc-name">{f.name}</span>
-                      <span className="pgc-code">{f.code}</span>
                     </div>
                     <div className="pgc-actions">
                       <button type="button" className="pgc-btn chip-edit" title="Edit"
@@ -1070,7 +1086,6 @@ function FacultyTable({ rows, onDelete, onPDF, onExcel }) {
       <table className="fac-table">
         <thead>
           <tr>
-            <th>Code</th>
             <th>Faculty Name</th>
             <th>Subject</th>
             <th>Sem · Sec</th>
@@ -1080,7 +1095,6 @@ function FacultyTable({ rows, onDelete, onPDF, onExcel }) {
         <tbody>
           {rows.map(f => (
             <tr key={f.id} className="fac-tr">
-              <td><span className="ft-code">{f.code}</span></td>
               <td className="ft-name">{f.name}</td>
               <td className="ft-subject">{f.subject || <span className="ft-empty">—</span>}</td>
               <td><span className="ft-badge">Sem {f.sem} · {f.sec}</span></td>

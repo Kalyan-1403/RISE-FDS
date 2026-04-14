@@ -9,11 +9,6 @@ class Faculty(db.Model):
         db.Integer,
         primary_key=True,
     )
-    code = db.Column(
-        db.String(30),
-        nullable=False,
-        index=True,
-    )
     name = db.Column(
         db.String(150),
         nullable=False,
@@ -100,7 +95,6 @@ class Faculty(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
-            'code': self.code,
             'name': self.name,
             'subject': self.subject,
             'year': self.year,
@@ -119,5 +113,5 @@ class Faculty(db.Model):
 
     def __repr__(self):
         return (
-            f'<Faculty {self.code} - {self.name}>'
+            f'<Faculty {self.id} - {self.name}>'
         )
