@@ -665,6 +665,7 @@ const assignedCountBySec = useMemo(() => {
                 </div>
               )}
           </section>
+          )}
         </section>
 
           {/* ═══════════════ NEW POOL PANEL (GRID) ═══════════════ */}
