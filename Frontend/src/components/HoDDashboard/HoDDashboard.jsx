@@ -665,8 +665,6 @@ const assignedCountBySec = useMemo(() => {
                 </div>
               )}
           </section>
-          )}
-        </section>
 
           {/* ═══════════════ NEW POOL PANEL (GRID) ═══════════════ */}
           <section className="panel pool-panel" style={{ marginTop: '24px' }}>
@@ -697,7 +695,6 @@ const assignedCountBySec = useMemo(() => {
               </div>
             )}
           </section>
-
         </main>
 
         {/* ═══════════════ PUBLISH MODAL ═══════════════ */}
