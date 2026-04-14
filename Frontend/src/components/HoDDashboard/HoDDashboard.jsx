@@ -135,7 +135,7 @@ const HoDDashboard = () => {
     // The 'true' at the end turns on Capture Mode. It listens to EVERY scrolling container on the page!
     window.addEventListener('scroll', handleScroll, true);
     return () => window.removeEventListener('scroll', handleScroll, true);
-  }, []);
+  }, []);s
 
   const dismissScrollHint = () => {
     setHintDismissed(true);
