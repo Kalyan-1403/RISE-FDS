@@ -244,7 +244,6 @@ function groupFacultyRecords(facultyList) {
 
 function FacultyListRow({ faculty, onOpen, onRemove }) {
   return (
-    // Note: We pass faculty.records[0] so the modal opens the stats for the first matched section correctly
     <div className="flm-row" onClick={() => onOpen(faculty.records ? faculty.records[0] : faculty)}>
       <span className="flr-name">{faculty.name}</span>
       <span className="flr-subject">{faculty.subject || '—'}</span>
@@ -254,7 +253,7 @@ function FacultyListRow({ faculty, onOpen, onRemove }) {
         <button
           className="faculty-remove-chip"
           onClick={() => onRemove(faculty.ids || faculty.id, faculty.name)}
-          title="Remove Assignment"
+          title="Remove"
         >✕</button>
       </span>
     </div>
@@ -453,20 +452,25 @@ const AdminDashboard = () => {
     setShowDeleteModal(true);
   };
 
-  const confirmDeleteResponses = async (downloadFirst) => {
+const confirmDeleteResponses = async (downloadFirst) => {
     const { type, college, dept, faculty } = deleteTarget;
     if (downloadFirst && type === 'faculty' && faculty?.statistics?.totalResponses > 0) {
       generateFacultyPDF(faculty, faculty.statistics, college);
     }
+
+    // INSTANT UI FIX: Close modals immediately so the user isn't stuck waiting
+    setShowDeleteModal(false);
+    setShowFacultyModal(false);
+
     try {
       if (type === 'faculty' && faculty) await dataService.deleteFacultyFeedback(faculty.id);
       else if (type === 'department') await dataService.deleteDepartmentFeedback(college, dept);
       else if (type === 'college') await dataService.deleteCollegeFeedback(college);
+
+      showToast('Responses deleted successfully.', 'success');
+      // Silent background sync
       await loadAllData();
       setFacultyStatsCache({});
-      setShowDeleteModal(false);
-      setShowFacultyModal(false);
-      showToast('Responses deleted successfully.', 'success');
     } catch (err) {
       console.error('Delete failed:', err);
       showToast(err.message || 'Failed to delete responses.');
@@ -621,17 +625,26 @@ const AdminDashboard = () => {
 
   const removeFaculty = async (ids, facultyName = 'this faculty') => {
     if (!window.confirm(`🗑️ Permanently remove "${facultyName}"?`)) return;
-    
+
     const idArray = Array.isArray(ids) ? ids : [ids];
-    
-    try {
-      for (const id of idArray) {
-        await dataService.deleteFacultyById(id);
+
+    // INSTANT UI FIX: Remove ghosts from the state immediately before waiting for server
+    setAllDepartments(prev => {
+      const next = { ...prev };
+      for (const key in next) {
+        next[key] = next[key].filter(f => !idArray.includes(f.id));
       }
-      await loadAllData();
+      return next;
+    });
+
+    try {
+      // SPEED FIX: Parallel execution for multiple IDs
+      await Promise.all(idArray.map(id => dataService.deleteFacultyById(id)));
       showToast('Faculty removed successfully.', 'success');
+      loadAllData(); // Silent background sync
     } catch (e) {
       showToast(e.message || 'Failed to remove faculty.');
+      loadAllData(); // Revert on failure
     }
   };
 
@@ -1133,14 +1146,21 @@ const AdminDashboard = () => {
                           <span></span>
                         </div>
                         <div className="flm-body">
-                          {faculties.map((faculty) => (
-                            <FacultyListRow
-                              key={faculty.id}
-                              faculty={faculty}
-                              onOpen={openFacultyModal}
-                              onRemove={removeFaculty}
-                            />
-                          ))}
+                          {faculties.map((faculty) => {
+                            // RENDER GHOSTING FIX: Indestructible stable key
+                            const stableKey = faculty.allSecs
+                              ? `${faculty.name}-${faculty.subject}-${faculty.sem}-${faculty.allSecs.sort().join('')}`
+                              : `${faculty.id}-${faculty.sec}`;
+
+                            return (
+                              <FacultyListRow
+                                key={stableKey}
+                                faculty={faculty}
+                                onOpen={openFacultyModal}
+                                onRemove={removeFaculty}
+                              />
+                            );
+                          })}
                         </div>
                       </div>
                     )}

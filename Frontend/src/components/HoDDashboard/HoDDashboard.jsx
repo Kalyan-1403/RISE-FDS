@@ -89,14 +89,22 @@ const HoDDashboard = () => {
   const [editStrengthId,   setEditStrengthId]   = useState(null);
   const [editStrengthVal,  setEditStrengthVal]  = useState('');
 
-  // ─── CURRICULUM STATE (Saved to LocalStorage) ───
-  const [curriculum, setCurriculum] = useState(() => {
-    const stored = localStorage.getItem(`curriculum_${currentUser?.college}_${currentUser?.department}`);
-    return stored ? JSON.parse(stored) : {};
-  });
+  // ─── CURRICULUM STATE (Saved to LocalStorage - GHOSTING FIXED) ───
+  const [curriculum, setCurriculum] = useState({});
+  const isCurriculumLoaded = useRef(false);
 
+  // Safely load ONLY when currentUser is fully resolved
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && !isCurriculumLoaded.current) {
+      const stored = localStorage.getItem(`curriculum_${currentUser.college}_${currentUser.department}`);
+      if (stored) setCurriculum(JSON.parse(stored));
+      isCurriculumLoaded.current = true;
+    }
+  }, [currentUser]);
+
+  // Safely save ONLY after it has been properly loaded
+  useEffect(() => {
+    if (currentUser && isCurriculumLoaded.current) {
       localStorage.setItem(`curriculum_${currentUser.college}_${currentUser.department}`, JSON.stringify(curriculum));
     }
   }, [curriculum, currentUser]);
@@ -284,39 +292,56 @@ const HoDDashboard = () => {
     const trimmed = newFacultyName.trim();
     if (!trimmed) { showToast('Please enter the faculty full name.'); return; }
     if (!/^[A-Za-z\s.]+$/.test(trimmed)) { showToast('Name must contain only letters, spaces and dots.'); return; }
+    
     const payload = {
       name: trimmed, subject: 'TBD', year: '',
       branch: isSH ? (selectedBranch || '') : currentUser.department,
       sem: '', sec: '', dept: currentUser.department, college: currentUser.college,
     };
+    
     setIsSaving(true);
     try {
       if (editingId) {
         await dataService.updateFaculty(editingId, payload);
+        // Instant Local Update
+        setFacultyList(prev => prev.map(f => f.id === editingId ? { ...f, name: trimmed } : f));
         setEditingId(null);
         showToast('Faculty updated.', 'success');
       } else {
-        await dataService.createFaculty(payload);
+        const res = await dataService.createFaculty(payload);
+        // Instant Local Update (Inject the new faculty returned from the server immediately)
+        if (res.faculty) setFacultyList(prev => [...prev, normalizeFaculty(res.faculty)]);
         showToast(`${trimmed} added to pool.`, 'success');
       }
-      await loadDashboardData();
       setNewFacultyName('');
-    } catch (err) { showToast(err.message || 'Failed to save faculty.'); }
-    finally { setIsSaving(false); }
+    } catch (err) { 
+      showToast(err.message || 'Failed to save faculty.'); 
+    } finally { 
+      setIsSaving(false); 
+      loadDashboardData(); // Silent background sync
+    }
   };
 
-  const deleteFaculty = async (ids, subjectName = '') => {
+ const deleteFaculty = async (ids, subjectName = '') => {
     const msg = subjectName 
       ? `Remove assignment for "${subjectName}"? They will be removed from ALL sections they teach this specific subject in.` 
       : 'Remove this faculty?';
     if (!window.confirm(msg)) return;
     
     const idArray = Array.isArray(ids) ? ids : [ids];
+    
+    // INSTANT UI UPDATE: Remove the ghosts immediately before waiting for the network
+    setFacultyList(prev => prev.filter(f => !idArray.includes(f.id))); 
+    
     try { 
       for(const id of idArray) { await dataService.deleteFacultyById(id); }
-      await loadDashboardData(); 
+      await loadDashboardData(); // Syncs silently in the background
+      showToast('Successfully deleted.', 'success');
     }
-    catch (err) { showToast(err.message || 'Delete failed.'); }
+    catch (err) { 
+      showToast(err.message || 'Delete failed.'); 
+      await loadDashboardData(); // If it fails, bring the original data back
+    }
   };
 
   const handleDeleteCurriculum = (key) => {
@@ -427,11 +452,13 @@ const HoDDashboard = () => {
     let failed = [];
     
     try {
-      for (const [subject, facId] of assignments) {
+      // 1. Blast all requests to the backend AT THE SAME TIME (Parallel)
+      const assignmentPromises = assignments.map(async ([subject, facId]) => {
         const faculty = globalFacultyPool.find(f => String(f.id) === String(facId));
-        if (!faculty) continue;
+        if (!faculty) return;
+        
         try {
-          await dataService.createFaculty({
+          const res = await dataService.createFaculty({
             name: faculty.name,
             subject: subject,
             year: isSH ? 'I' : assignYear,
@@ -442,21 +469,31 @@ const HoDDashboard = () => {
             college: currentUser.college,
           });
           savedCount++;
+          return normalizeFaculty(res.faculty); // Return the newly created record
         } catch (err) {
           failed.push(subject);
+          return null;
         }
-      }
-      await loadDashboardData();
+      });
+
+      // Wait for all parallel requests to finish
+      const newRecords = (await Promise.all(assignmentPromises)).filter(Boolean);
+
+      // 2. Instantly update the local UI state without doing a massive database refetch!
+      setFacultyList(prev => [...prev, ...newRecords]);
+
       if (failed.length > 0) {
-        showToast(`${savedCount} saved. Failed to assign: ${failed.join(', ')}`, 'error');
+        showToast(`${savedCount} saved. Failed: ${failed.join(', ')}`, 'error');
       } else {
-        showToast(`Successfully assigned ${savedCount} faculty to Sec ${assignSection}!`, 'success');
-        setShowAssignModal(false);
+        showToast(`Successfully assigned ${savedCount} faculty!`, 'success');
+        setShowAssignModal(false); // Close modal instantly!
       }
     } catch (err) {
       showToast(err.message || 'Assignment failed.');
     } finally {
       setIsAssigning(false);
+      // 3. Do a silent background sync just to be completely safe, but don't force the user to wait for it.
+      loadDashboardData(); 
     }
   };
 
@@ -1303,8 +1340,12 @@ const HoDDashboard = () => {
                             if (!name) { setSectionError('Section name is required.'); return; }
                             try {
                               if (!isSH && applyAll) {
-                                const newSecs = [];
-                                for (const yr of availableYears) { const res = await sectionAPI.create({ year: yr, branch: '', sectionName: name, strength }); newSecs.push(res.data.section); }
+                                // BLAST IN PARALLEL!
+                                const createPromises = availableYears.map(yr => 
+                                  sectionAPI.create({ year: yr, branch: '', sectionName: name, strength })
+                                );
+                                const responses = await Promise.all(createPromises);
+                                const newSecs = responses.map(res => res.data.section);
                                 setSections(prev => [...prev, ...newSecs]);
                               } else {
                                 const res = await sectionAPI.create({ year: isSH ? 'I' : key, branch: isSH ? key : '', sectionName: name, strength });
@@ -1403,24 +1444,29 @@ function FacultyTable({ rows, onDelete, onPDF, onExcel }) {
           </tr>
         </thead>
         <tbody>
-          {groupedRows.map(g => (
-            <tr key={g.ids.join('-')} className="fac-tr">
-              <td className="ft-name">{g.name}</td>
-              <td className="ft-subject">{g.subject || <span className="ft-empty">—</span>}</td>
-              <td>
-                <span className="ft-badge">
-                  Sem {g.sem} · {g.allSecs.sort().join(' & ')}
-                </span>
-              </td>
-              <td>
-                <div className="ft-actions">
-                  <button type="button" className="fta-btn fta-del" onClick={() => onDelete(g.ids, g.subject)} title="Remove Assignment">🗑</button>
-                  <button type="button" className="fta-btn fta-pdf" onClick={() => onPDF(g.records[0])} title="Download PDF">📄</button>
-                  <button type="button" className="fta-btn fta-xls" onClick={() => onExcel(g.records[0])} title="Download Excel">📊</button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {groupedRows.map(g => {
+            // THE FIX: Create an absolutely stable key based on their exact assignment profile
+            const stableKey = `${g.name}-${g.subject}-${g.sem}-${g.allSecs.sort().join('')}`;
+            
+            return (
+              <tr key={stableKey} className="fac-tr">
+                <td className="ft-name">{g.name}</td>
+                <td className="ft-subject">{g.subject || <span className="ft-empty">—</span>}</td>
+                <td>
+                  <span className="ft-badge">
+                    Sem {g.sem} · {g.allSecs.sort().join(' & ')}
+                  </span>
+                </td>
+                <td>
+                  <div className="ft-actions">
+                    <button type="button" className="fta-btn fta-del" onClick={() => onDelete(g.ids, g.subject)} title="Remove Assignment">🗑</button>
+                    <button type="button" className="fta-btn fta-pdf" onClick={() => onPDF(g.records[0])} title="Download PDF">📄</button>
+                    <button type="button" className="fta-btn fta-xls" onClick={() => onExcel(g.records[0])} title="Download Excel">📊</button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
