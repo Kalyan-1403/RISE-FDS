@@ -876,100 +876,124 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
-		{/* ===== COLLEGE CARDS ===== */}
-			<div style={{
-  				display: 'flex',
-  				justifyContent: 'center',
- 				 alignItems: 'center',
-  				gap: '32px',
-  				marginTop: '48px',
- 				flexWrap: 'wrap',
-				}}>
-  				{Object.values(colleges).map((college) => {
-   					 const collegeStats = calculateCollegeStats(college);
-   					 const deptCount = Object.keys(deptStructure[college] || {}).length;
-   						 return (
-    							  <div key={college}
-								onClick={() => setSelectedCollege(college)}
-      								  style={{
-       									   background: 'rgba(255,255,255,0.98)',
-       									   borderRadius: '24px',
-        								 padding: '36px 40px',
-         								 minWidth: '260px',
-         								 maxWidth: '300px',
-        								  cursor: 'pointer',
-									boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
-         								 border: '2px solid rgba(255,107,157,0.15)',
-         								 transition: 'all 0.3s',
-         								 textAlign: 'center',
-         								 display: 'flex',
-          								flexDirection: 'column',
-         								 alignItems: 'center',
-         								 gap: '14px',
-      									  }}
-        					onMouseEnter={e => {
+            {/* ===== COLLEGE CARDS ===== */}
+            <div
+  style={{
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '32px',
+    marginTop: '48px',
+    flexWrap: 'wrap',
+  }}
+>
+  {Object.values(colleges).map((college) => {
+    const collegeStats = calculateCollegeStats(college);
+    const deptCount = Object.keys(deptStructure[college] || {}).length;
+
+    return (
+      <div
+        key={college}
+        onClick={() => setSelectedCollege(college)}
+        style={{
+          background: 'rgba(255,255,255,0.98)',
+          borderRadius: '24px',
+          padding: '36px 40px',
+          minWidth: '260px',
+          maxWidth: '300px',
+          cursor: 'pointer',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
+          border: '2px solid rgba(255,107,157,0.15)',
+          transition: 'all 0.3s',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '14px',
+        }}
+        onMouseEnter={(e) => {
           e.currentTarget.style.transform = 'translateY(-6px)';
           e.currentTarget.style.boxShadow = '0 16px 48px rgba(255,107,157,0.20)';
         }}
-        onMouseLeave={e => {
+        onMouseLeave={(e) => {
           e.currentTarget.style.transform = 'translateY(0)';
           e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.10)';
         }}
       >
         <div style={{ fontSize: '52px' }}>🏛️</div>
-        <div style={{
-          fontSize: '22px',
-          fontWeight: '900',
-          background: 'linear-gradient(135deg, #ff6b9d, #feca57)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-        }}>
+        <div
+          style={{
+            fontSize: '22px',
+            fontWeight: '900',
+            background: 'linear-gradient(135deg, #ff6b9d, #feca57)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}
+        >
           {college}
         </div>
-        <div style={{ fontSize: '13px', color: '#636e72', fontWeight: '600' }}>College</div>
-        <div style={{
-          display: 'flex',
-          gap: '12px',
-          marginTop: '8px',
-          width: '100%',
-          justifyContent: 'center',
-        }}>
-          <div style={{
-            flex: 1,
-            background: 'linear-gradient(135deg, #ffeaa7, #fed6e3)',
-            borderRadius: '12px',
-            padding: '10px 8px',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: '20px', fontWeight: '900', color: '#2d3436' }}>{deptCount}</div>
-            <div style={{ fontSize: '11px', color: '#636e72', fontWeight: '600' }}>Depts</div>
+        <div style={{ fontSize: '13px', color: '#636e72', fontWeight: '600' }}>
+          College
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: '12px',
+            marginTop: '8px',
+            width: '100%',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              background: 'linear-gradient(135deg, #ffeaa7, #fed6e3)',
+              borderRadius: '12px',
+              padding: '10px 8px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '20px', fontWeight: '900', color: '#2d3436' }}>
+              {deptCount}
+            </div>
+            <div style={{ fontSize: '11px', color: '#636e72', fontWeight: '600' }}>
+              Depts
+            </div>
           </div>
-          <div style={{
-            flex: 1,
-            background: 'linear-gradient(135deg, #d1fae5, #a7f3d0)',
-            borderRadius: '12px',
-            padding: '10px 8px',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: '20px', fontWeight: '900', color: '#065f46' }}>{collegeStats.totalFaculty}</div>
-            <div style={{ fontSize: '11px', color: '#065f46', fontWeight: '600' }}>Faculty</div>
+          <div
+            style={{
+              flex: 1,
+              background: 'linear-gradient(135deg, #d1fae5, #a7f3d0)',
+              borderRadius: '12px',
+              padding: '10px 8px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '20px', fontWeight: '900', color: '#065f46' }}>
+              {collegeStats.totalFaculty}
+            </div>
+            <div style={{ fontSize: '11px', color: '#065f46', fontWeight: '600' }}>
+              Faculty
+            </div>
           </div>
         </div>
-        							<div style={{
-        							  marginTop: '4px',
-         								 padding: '8px 20px',
-        								  background: 'linear-gradient(135deg, #ff6b9d, #feca57)',
-       									   color: 'white',
-        							  borderRadius: '10px',
-         							 fontSize: '13px',
-        						  fontWeight: '800',
-       							 }}>
-        					  View Details →
-      						  </div>
-      						</div>
-   						 );
-  					})}
-				</div>
+        <div
+          style={{
+            marginTop: '4px',
+            padding: '8px 20px',
+            background: 'linear-gradient(135deg, #ff6b9d, #feca57)',
+            color: 'white',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontWeight: '800',
+          }}
+        >
+          View Details →
+        </div>
+      </div>
+    );
+  })}
+          </div>
 
              
           ) : !selectedDepartment ? (
