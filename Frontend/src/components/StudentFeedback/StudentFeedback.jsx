@@ -56,7 +56,7 @@ const StudentFeedback = () => {
             batch.faculty.length > 0
           ) {
             batch.faculty.forEach((f) => {
-              initialComments[f.code] = '';
+              initialComments[f.id] = '';
             });
           }
           setFacultyComments(initialComments);
@@ -80,21 +80,17 @@ const StudentFeedback = () => {
     fetchBatchData();
   }, [batchId]);
 
-  const handleRatingChange = (
-    paramIndex,
-    subjectCode,
-    value
-  ) => {
+  const handleRatingChange = (paramIndex, facultyId, value) => {
     setRatings((prev) => ({
       ...prev,
-      [`${paramIndex}-${subjectCode}`]: value,
+      [`${paramIndex}-${facultyId}`]: value,
     }));
   };
 
-  const handleFacultyComment = (code, value) => {
+  const handleFacultyComment = (facultyId, value) => {
     setFacultyComments((prev) => ({
       ...prev,
-      [code]: value,
+      [facultyId]: value,
     }));
   };
 
@@ -125,12 +121,9 @@ const StudentFeedback = () => {
       const allComments = [];
 
       batchData.faculty.forEach((fac) => {
-        const comment =
-          facultyComments[fac.code]?.trim();
+        const comment = facultyComments[fac.id]?.trim();
         if (comment) {
-          allComments.push(
-            `[FACULTY:${fac.code}:${fac.name}] ${comment}`
-          );
+          allComments.push(`[FACULTY:${fac.id}:${fac.name}] ${comment}`);
         }
       });
 
@@ -152,10 +145,8 @@ const StudentFeedback = () => {
       batchData.faculty.forEach((fac) => {
         const facultyRatings = {};
         PARAMETERS.forEach((param, idx) => {
-          const rating =
-            ratings[`${idx}-${fac.code}`];
-          facultyRatings[param] =
-            parseInt(rating);
+          const rating = ratings[`${idx}-${fac.id}`];
+          facultyRatings[param] = parseInt(rating);
         });
 
         feedbackData.responses.push({
@@ -279,9 +270,6 @@ const StudentFeedback = () => {
                 <table className="mapping-table">
                   <thead>
                     <tr>
-                      <th className="code-cell">
-                        Subject Code
-                      </th>
                       <th className="name-cell">
                         Faculty Name
                       </th>
@@ -293,10 +281,7 @@ const StudentFeedback = () => {
                   <tbody>
                     {batchData.faculty.map(
                       (fac) => (
-                        <tr key={fac.code}>
-                          <td className="code-cell">
-                            {fac.code}
-                          </td>
+                        <tr key={fac.id}>
                           <td className="name-cell">
                             {fac.name}
                           </td>
@@ -333,10 +318,10 @@ const StudentFeedback = () => {
                         {batchData.faculty.map(
                           (fac) => (
                             <th
-                              key={fac.code}
+                              key={fac.id}
                               className="subject-col"
                             >
-                              {fac.code}
+                              {fac.subject || fac.name}
                             </th>
                           )
                         )}
@@ -355,26 +340,19 @@ const StudentFeedback = () => {
                             {batchData.faculty.map(
                               (fac) => (
                                 <td
-                                  key={
-                                    fac.code
-                                  }
+                                  key={fac.id}
                                   className="rating-cell"
                                 >
                                   <select
                                     className="rating-select"
                                     value={
-                                      ratings[
-                                        `${idx}-${fac.code}`
-                                      ] || ''
+                                      ratings[`${idx}-${fac.id}`] || ''
                                     }
-                                    onChange={(
-                                      e
-                                    ) =>
+                                    onChange={(e) =>
                                       handleRatingChange(
                                         idx,
-                                        fac.code,
-                                        e.target
-                                          .value
+                                        fac.id,
+                                        e.target.value
                                       )
                                     }
                                     required
@@ -427,7 +405,7 @@ const StudentFeedback = () => {
                   {batchData.faculty.map(
                     (fac) => (
                       <div
-                        key={fac.code}
+                        key={fac.id}
                         style={{
                           marginBottom: '14px',
                         }}
@@ -437,24 +415,17 @@ const StudentFeedback = () => {
                             display: 'block',
                             fontSize: '13px',
                             fontWeight: '700',
-                            marginBottom:
-                              '4px',
+                            marginBottom: '4px',
                             color: '#1e40af',
                           }}
                         >
-                          {fac.code} —{' '}
-                          {fac.name} (
-                          {fac.subject})
+                          {fac.name} ({fac.subject})
                         </label>
                         <textarea
-                          value={
-                            facultyComments[
-                              fac.code
-                            ] || ''
-                          }
+                          value={facultyComments[fac.id] || ''}
                           onChange={(e) =>
                             handleFacultyComment(
-                              fac.code,
+                              fac.id,
                               e.target.value
                             )
                           }

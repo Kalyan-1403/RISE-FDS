@@ -43,12 +43,12 @@ export const AuthProvider = ({ children }) => {
           const meResponse = await authAPI.me();
           if (meResponse.data?.user) {
             const verifiedUser = meResponse.data.user;
-            localStorage.setItem(USER_CACHE_KEY, JSON.stringify(verifiedUser));
+            sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(verifiedUser));
             setUser(verifiedUser);
           }
         } catch {
           // Refresh worked but /me failed — use cached profile if available
-          const cached = localStorage.getItem(USER_CACHE_KEY);
+          const cached = sessionStorage.getItem(USER_CACHE_KEY) || localStorage.getItem(USER_CACHE_KEY);
           if (cached) {
             try { setUser(JSON.parse(cached)); } catch { /* ignore parse error */ }
           }
@@ -56,6 +56,7 @@ export const AuthProvider = ({ children }) => {
       } catch {
         // Refresh failed — no valid session (cookie expired or missing)
         clearAccessToken();
+        sessionStorage.removeItem(USER_CACHE_KEY);
         localStorage.removeItem(USER_CACHE_KEY);
       } finally {
         setLoading(false);
@@ -75,23 +76,23 @@ export const AuthProvider = ({ children }) => {
     if (accessToken) {
       setAccessToken(accessToken);
     }
-    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData));
+    sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData));
     setUser(userData);
   }, []);
 
   // ── Logout ────────────────────────────────────────────────────────────────
   const logoutUser = useCallback(async () => {
     try {
-      // FIX (HIGH): Tell the server to revoke the current access token and
-      // clear the httpOnly refresh cookie. Without this call, the refresh
-      // cookie remains valid until it naturally expires.
       await authAPI.logout();
     } catch {
       // Even if the server call fails, clear client state
     } finally {
       clearAccessToken();
+      sessionStorage.removeItem(USER_CACHE_KEY);
       localStorage.removeItem(USER_CACHE_KEY);
       setUser(null);
+      // Hard redirect — clears all in-memory state and forces login page
+      window.location.replace('/');
     }
   }, []);
 

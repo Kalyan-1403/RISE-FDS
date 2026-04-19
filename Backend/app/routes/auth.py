@@ -272,9 +272,6 @@ def delete_account():
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    if user.role == 'admin':
-        return jsonify({"error": "Admin accounts cannot be self-deleted"}), 403
-
     data = request.get_json()
     if not data:
         return jsonify({"error": "Request body required"}), 400
@@ -287,17 +284,17 @@ def delete_account():
     jti = get_jwt()["jti"]
     add_to_blocklist(jti)
 
-    # Delete all department data before removing the user
-    college = user.college
-    department = user.department
-
-    batches = Batch.query.filter_by(college=college, department=department).all()
-    for batch in batches:
-        db.session.delete(batch)  # cascades → BatchFaculty, FeedbackSubmission, FeedbackRating
-
-    faculty = Faculty.query.filter_by(college=college, department=department).all()
-    for f in faculty:
-        db.session.delete(f)  # cascades → FeedbackRating
+    if user.role == 'hod':
+        # HoD: delete credentials + all department data
+        college = user.college
+        department = user.department
+        batches = Batch.query.filter_by(college=college, department=department).all()
+        for batch in batches:
+            db.session.delete(batch)
+        faculty_records = Faculty.query.filter_by(college=college, department=department).all()
+        for f in faculty_records:
+            db.session.delete(f)
+    # Admin roles (Principal/Director/Chairman): delete credentials only — data is preserved
 
     db.session.delete(user)
     db.session.commit()

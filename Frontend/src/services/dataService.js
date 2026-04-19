@@ -122,19 +122,9 @@ const login = async (loginData) => {
     );
     if (response.data.success) {
       setAccessToken(response.data.access_token);
-      localStorage.setItem(
-        'access_token',
-        response.data.access_token
-      );
-      if (response.data.refresh_token)
-        localStorage.setItem(
-          'refresh_token',
-          response.data.refresh_token
-        );
-      localStorage.setItem(
-        'user',
-        JSON.stringify(response.data.user)
-      );
+      // User profile cached per-tab in sessionStorage (not localStorage)
+      // so different tabs can have different logged-in accounts simultaneously
+      sessionStorage.setItem('user', JSON.stringify(response.data.user));
     }
     setBackendStatus(true);
     return response.data;

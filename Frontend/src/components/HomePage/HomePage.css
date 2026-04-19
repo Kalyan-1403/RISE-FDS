@@ -8,8 +8,25 @@
   justify-content: center;
   background: #ffffff;
   position: relative;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 107, 157, 0.4) transparent;
+}
+
+.login-page::-webkit-scrollbar {
+  width: 5px;
+}
+.login-page::-webkit-scrollbar-track {
+  background: transparent;
+}
+.login-page::-webkit-scrollbar-thumb {
+  background: rgba(255, 107, 157, 0.4);
+  border-radius: 10px;
+}
+.login-page::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 107, 157, 0.7);
 }
 
 .login-bg {
