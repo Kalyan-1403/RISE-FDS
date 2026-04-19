@@ -253,7 +253,7 @@ def get_current_user():
 
 
 @auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)
+@jwt_required(refresh=True, locations=['cookies'])
 def refresh():
     user_id = get_jwt_identity()
     user = User.query.filter_by(user_id=user_id, is_active=True).first()
