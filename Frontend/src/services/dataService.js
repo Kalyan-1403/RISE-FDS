@@ -5,6 +5,7 @@ import {
   feedbackAPI,
   dashboardAPI,
   reportsAPI,
+  setAccessToken,
 } from './api.js';
 
 const DEPT_STRUCTURE_KEY = 'deptStructure';
@@ -120,6 +121,7 @@ const login = async (loginData) => {
       loginData
     );
     if (response.data.success) {
+      setAccessToken(response.data.access_token);
       localStorage.setItem(
         'access_token',
         response.data.access_token

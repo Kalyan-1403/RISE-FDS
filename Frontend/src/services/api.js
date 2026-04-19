@@ -59,6 +59,8 @@ const processQueue = (error, token = null) => {
 const forceLogout = () => {
   clearAccessToken();
   localStorage.removeItem('user');
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
   window.location.href = '/';
 };
 
@@ -91,10 +93,17 @@ api.interceptors.response.use(
         // FIX (CRITICAL): The refresh token is now an httpOnly cookie.
         // The browser sends it automatically with withCredentials=true.
         // No manual token extraction from localStorage needed.
+        const storedRefreshToken = localStorage.getItem('refresh_token');
         const { data } = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
-          { withCredentials: true, timeout: 10000 },
+          {
+            withCredentials: true,
+            timeout: 10000,
+            headers: storedRefreshToken
+              ? { Authorization: `Bearer ${storedRefreshToken}` }
+              : {},
+          },
         );
 
         const newAccessToken = data.access_token;
