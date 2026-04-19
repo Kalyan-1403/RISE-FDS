@@ -305,14 +305,50 @@ const HoDDashboard = () => {
     finally { setIsSaving(false); }
   };
 
-  const deleteFaculty = async (ids) => {
-    if (!window.confirm('Remove this faculty assignment? This cannot be undone.')) return;
+  const deleteFaculty = async (ids, subjectName = '') => {
+    const msg = subjectName 
+      ? `Remove assignment for "${subjectName}"? They will be removed from ALL sections they teach this specific subject in.` 
+      : 'Remove this faculty?';
+    if (!window.confirm(msg)) return;
+    
     const idArray = Array.isArray(ids) ? ids : [ids];
     try { 
       for(const id of idArray) { await dataService.deleteFacultyById(id); }
       await loadDashboardData(); 
     }
     catch (err) { showToast(err.message || 'Delete failed.'); }
+  };
+
+  const handleDeleteCurriculum = (key) => {
+    if (!window.confirm("Delete these semester subjects? You can define new ones anytime.")) return;
+    setCurriculum(prev => {
+      const c = { ...prev };
+      delete c[key];
+      return c;
+    });
+    showToast('Subjects deleted.', 'success');
+  };
+
+  const clearFacultyPool = async () => {
+    if (!window.confirm('🗑️ Delete ALL unassigned faculty from the pool to add fresh faces for the new semester?')) return;
+    setIsSaving(true);
+    try {
+      for (const f of globalFacultyPool) { await dataService.deleteFacultyById(f.id); }
+      await loadDashboardData();
+      showToast('Pool cleared successfully.', 'success');
+    } catch (err) { showToast('Failed to clear pool.'); }
+    finally { setIsSaving(false); }
+  };
+
+  const clearAllAssignments = async () => {
+    if (!window.confirm('⚠️ DANGER: Remove ALL assigned faculty from all sections? This resets the dashboard for a new semester.')) return;
+    setIsSaving(true);
+    try {
+      for (const f of assignedFaculty) { await dataService.deleteFacultyById(f.id); }
+      await loadDashboardData();
+      showToast('All assignments cleared.', 'success');
+    } catch (err) { showToast('Failed to clear assignments.'); }
+    finally { setIsSaving(false); }
   };
 
   /* ═══════════════ DEFINE SUBJECTS (CURRICULUM) WORKFLOW ═══════════════ */
@@ -636,6 +672,11 @@ const HoDDashboard = () => {
                   <span className="lp-sub">{groupFacultyRecords(assignedFaculty).length} assigned · {globalFacultyPool.length} in pool</span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
+                  {assignedFaculty.length > 0 && (
+                    <button type="button" className="btn-assign-new" style={{ background: 'white', border: '1px solid #ef4444', color: '#ef4444' }} onClick={clearAllAssignments} disabled={isSaving}>
+                      {isSaving ? '⏳...' : '🔄 Reset All Assignments'}
+                    </button>
+                  )}
                   <button type="button" className="btn-assign-new" style={{ background: '#64748b' }} onClick={openSubjectModal}>
                     + Define Subjects
                   </button>
@@ -806,8 +847,13 @@ const HoDDashboard = () => {
 
           {/* ═══════════════ NEW POOL PANEL ═══════════════ */}
           <section className="panel pool-panel" style={{ marginTop: '24px' }}>
-            <div className="panel-header">
+            <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3>👥 Faculty Pool <span style={{ fontSize: '12px', background: '#e2e8f0', padding: '2px 8px', borderRadius: '10px', marginLeft: '8px', color: '#475569' }}>{globalFacultyPool.length} Unassigned</span></h3>
+              {globalFacultyPool.length > 0 && (
+                <button type="button" onClick={clearFacultyPool} disabled={isSaving} style={{ background: 'white', border: '1px solid #ef4444', color: '#ef4444', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+                  {isSaving ? '⏳...' : '🗑️ Clear Pool'}
+                </button>
+              )}
             </div>
             {!globalFacultyPool.length ? (
               <div className="empty-state" style={{ padding: '30px' }}>
@@ -853,9 +899,12 @@ const HoDDashboard = () => {
                         <strong style={{ fontSize: '15px', color: '#1e293b' }}>
                           {isSH ? `Branch: ${yOrB}` : `Year ${yOrB}`} · Sem {sem}
                         </strong>
-                        <span style={{ fontSize: '12px', color: '#64748b', background: '#e2e8f0', padding: '2px 8px', borderRadius: '12px' }}>
-                          {data.sections.length} Sections
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '12px', color: '#64748b', background: '#e2e8f0', padding: '2px 8px', borderRadius: '12px' }}>
+                            {data.sections.length} Sections
+                          </span>
+                          <button type="button" onClick={() => handleDeleteCurriculum(key)} title="Delete Subjects" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }}>🗑️</button>
+                        </div>
                       </div>
                       <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
                         <strong>Taught in:</strong> {data.sections.join(', ')}
@@ -1365,7 +1414,7 @@ function FacultyTable({ rows, onDelete, onPDF, onExcel }) {
               </td>
               <td>
                 <div className="ft-actions">
-                  <button type="button" className="fta-btn fta-del" onClick={() => onDelete(g.ids)} title="Remove Assignment">🗑</button>
+                  <button type="button" className="fta-btn fta-del" onClick={() => onDelete(g.ids, g.subject)} title="Remove Assignment">🗑</button>
                   <button type="button" className="fta-btn fta-pdf" onClick={() => onPDF(g.records[0])} title="Download PDF">📄</button>
                   <button type="button" className="fta-btn fta-xls" onClick={() => onExcel(g.records[0])} title="Download Excel">📊</button>
                 </div>

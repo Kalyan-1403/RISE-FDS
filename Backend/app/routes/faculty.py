@@ -18,7 +18,7 @@ def get_all_faculty():
     user = g.current_user
 
     if user.role == 'admin':
-        faculty_list = Faculty.query.filter_by(is_active=True).all()
+        faculty_list = Faculty.query.all()
     else:
         faculty_list = Faculty.query.filter_by(
             college=user.college,
