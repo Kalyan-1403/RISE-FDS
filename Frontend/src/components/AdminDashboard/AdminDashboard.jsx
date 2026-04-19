@@ -885,8 +885,8 @@ const AdminDashboard = () => {
     gap: '32px',
     marginTop: '48px',
     flexWrap: 'wrap',
-  }}
->
+  }}>
+
   {Object.values(colleges).map((college) => {
     const collegeStats = calculateCollegeStats(college);
     const deptCount = Object.keys(deptStructure[college] || {}).length;
