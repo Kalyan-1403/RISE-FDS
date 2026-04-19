@@ -309,34 +309,55 @@ const assignedCountBySec = useMemo(() => {
     for (const s of valid) {
       if (!subjectRegex.test(s)) { showToast(`"${s}" contains invalid characters.`); return; }
     }
-    setAssignRows(valid.map(s => ({ subjectName: s, section: '', facultyId: '' })));
+    setAssignRows(valid.map(s => ({ subjectName: s, sections: [], facultyId: '' })));
     setAssignStep(3);
   };
 
   const handleAssignFaculty = async () => {
     for (const row of assignRows) {
-      if (!row.section)   { showToast('Select a section for every row.');  return; }
+      if (!row.sections || row.sections.length === 0) {
+        showToast('Select at least one section for every subject row.'); return;
+      }
       if (!row.facultyId) { showToast('Select a faculty for every row.'); return; }
     }
     setIsAssigning(true);
-   try {
+    let savedCount = 0;
+    let failedSections = [];
+    try {
       for (const row of assignRows) {
         const faculty = globalFacultyPool.find(f => String(f.id) === String(row.facultyId));
         if (!faculty) continue;
-        await dataService.createFaculty({
-          // FIX: Removed faculty.code
-          name: faculty.name, subject: row.subjectName,
-          year: isSH ? 'I' : assignYear,
-          branch: isSH ? selectedBranch : currentUser.department,
-          sem: assignSem, sec: row.section,
-          dept: currentUser.department, college: currentUser.college,
-        });
+        for (const sec of row.sections) {
+          try {
+            await dataService.createFaculty({
+              name: faculty.name,
+              subject: row.subjectName,
+              year: isSH ? 'I' : assignYear,
+              branch: isSH ? selectedBranch : currentUser.department,
+              sem: assignSem,
+              sec: sec,
+              dept: currentUser.department,
+              college: currentUser.college,
+            });
+            savedCount++;
+          } catch (secErr) {
+            // Capture which section failed instead of aborting everything
+            failedSections.push(`${row.subjectName} → Sec ${sec}: ${secErr.message || 'failed'}`);
+          }
+        }
       }
       await loadDashboardData();
-      showToast(`${assignRows.length} assignment(s) saved.`, 'success');
-      setShowAssignModal(false);
-    } catch (err) { showToast(err.message || 'Assignment failed.'); }
-    finally { setIsAssigning(false); }
+      if (failedSections.length > 0) {
+        showToast(`${savedCount} saved. Failed: ${failedSections.join(', ')}`, 'error');
+      } else {
+        showToast(`${savedCount} assignment(s) saved successfully.`, 'success');
+        setShowAssignModal(false);
+      }
+    } catch (err) {
+      showToast(err.message || 'Assignment failed.');
+    } finally {
+      setIsAssigning(false);
+    }
   };
 
   /* ── Publish handlers ── */
@@ -938,14 +959,35 @@ const assignedCountBySec = useMemo(() => {
                         <div className="arc-subject">📚 {row.subjectName}</div>
                         <div className="arc-selects">
                           <div>
-                            <label>Section</label>
-                            <select value={row.section}
-                              onChange={e => { const a = [...assignRows]; a[i] = { ...a[i], section: e.target.value }; setAssignRows(a); }}>
-                              <option value="">— Section —</option>
-                              {(sectionsByKey[isSH ? selectedBranch : assignYear] || []).map(s => (
-                                <option key={s.id} value={s.sectionName}>{s.sectionName}</option>
-                              ))}
-                            </select>
+                            <label>Sections (select all that apply)</label>
+                            <div className="sec-checkbox-list">
+                              {(sectionsByKey[isSH ? selectedBranch : assignYear] || []).map(s => {
+                                const checked = (row.sections || []).includes(s.sectionName);
+                                return (
+                                  <label key={s.id} className="sec-checkbox-item">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => {
+                                        const a = [...assignRows];
+                                        const current = a[i].sections || [];
+                                        a[i] = {
+                                          ...a[i],
+                                          sections: checked
+                                            ? current.filter(x => x !== s.sectionName)
+                                            : [...current, s.sectionName],
+                                        };
+                                        setAssignRows(a);
+                                      }}
+                                    />
+                                    <span>{s.sectionName}</span>
+                                  </label>
+                                );
+                              })}
+                              {(sectionsByKey[isSH ? selectedBranch : assignYear] || []).length === 0 && (
+                                <span style={{ fontSize: '12px', color: '#94a3b8' }}>No sections found. Add sections first.</span>
+                              )}
+                            </div>
                           </div>
                           <div>
                             <label>Faculty from Pool</label>
