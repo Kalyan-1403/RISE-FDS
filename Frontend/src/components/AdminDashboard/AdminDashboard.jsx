@@ -226,27 +226,23 @@ function Toast({ toast, onClose }) {
 // ─────────────────────────────────────────────────────────────
 // FACULTY CARD SUB-COMPONENT
 // ─────────────────────────────────────────────────────────────
-function FacultyCard({ faculty, onOpen, onRemove }) {
+function FacultyListRow({ faculty, onOpen, onRemove }) {
   return (
-    <div className="faculty-card-compact" onClick={() => onOpen(faculty)}>
-      <div className="faculty-card-header-compact">
-        <span className="faculty-year-badge-compact">Y{faculty.year}</span>
+    <div className="flm-row" onClick={() => onOpen(faculty)}>
+      <span className="flr-name">{faculty.name}</span>
+      <span className="flr-subject">{faculty.subject || '—'}</span>
+      <span className="flr-meta">Sem {faculty.sem}</span>
+      <span className="flr-meta">Sec {faculty.sec}</span>
+      <span className="flr-actions" onClick={e => e.stopPropagation()}>
         <button
           className="faculty-remove-chip"
-          onClick={(e) => { e.stopPropagation(); onRemove(faculty.id, faculty.name); }}
-          title="Remove faculty"
+          onClick={() => onRemove(faculty.id, faculty.name)}
+          title="Remove"
         >✕</button>
-      </div>
-      <h4 className="faculty-name-compact">{faculty.name}</h4>
-      <p className="faculty-subject-compact">{faculty.subject}</p>
-      <div className="faculty-meta-compact">
-        <span>Sem {faculty.sem}</span>
-        <span>Sec {faculty.sec}</span>
-      </div>
+      </span>
     </div>
   );
 }
-
 // ─────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────
@@ -746,6 +742,78 @@ const AdminDashboard = () => {
     }
   };
 
+// ── Per-year / per-branch statistics ──────────────────────
+  const generateYearStatistics = async (college, dept, yearOrBranch, isSHDept) => {
+    const deptKey = `${college}_${dept}`;
+    const allFaculty = allDepartments[deptKey] || [];
+    const facultyForYear = isSHDept
+      ? allFaculty.filter(f => f.branch === yearOrBranch)
+      : allFaculty.filter(f => f.year === yearOrBranch);
+
+    if (facultyForYear.length === 0) {
+      showToast('No faculty assigned here yet.'); return;
+    }
+
+    setIsGeneratingReport(true);
+    setAiStatsData(null);
+    setShowAIStatsModal(true);
+
+    try {
+      await prefetchStatsForFacultyList(facultyForYear);
+
+      // Consolidate: same (name + subject) → merge sections, aggregate ratings
+      const grouped = {};
+      facultyForYear.forEach(f => {
+        const key = `${f.name}||${f.subject || ''}`;
+        if (!grouped[key]) grouped[key] = { name: f.name, subject: f.subject || '', sections: [], records: [] };
+        grouped[key].sections.push(String(f.sec || f.section || ''));
+        grouped[key].records.push(f);
+      });
+
+      const tableRows = [];
+      const performerData = [];
+
+      for (const group of Object.values(grouped)) {
+        let totalResponses = 0, weightedSum = 0, hasData = false;
+        for (const rec of group.records) {
+          const cached = facultyStatsCacheRef.current[rec.id];
+          if (cached && cached.totalResponses > 0) {
+            const rating = parseFloat(cached.slot2?.overallAverage || cached.slot1?.overallAverage || 0);
+            weightedSum += rating * cached.totalResponses;
+            totalResponses += cached.totalResponses;
+            hasData = true;
+          }
+        }
+        const avgRating = hasData && totalResponses > 0 ? weightedSum / totalResponses : null;
+        const row = {
+          name: group.name,
+          subject: group.subject,
+          sections: [...new Set(group.sections)].sort().join(', '),
+          avgRating,
+          totalResponses,
+          hasData,
+          firstRecord: group.records[0],
+        };
+        tableRows.push(row);
+        if (hasData && avgRating !== null) performerData.push(row);
+      }
+
+      setAiStatsData({
+        yearOrBranch, dept, college, isSHDept,
+        hasData: performerData.length > 0,
+        tableRows,
+        topPerformers: [...performerData].filter(r => r.avgRating > 9.0).sort((a, b) => b.avgRating - a.avgRating),
+        needsImprovement: [...performerData].filter(r => r.avgRating < 8.0).sort((a, b) => a.avgRating - b.avgRating),
+        generatedAt: new Date().toLocaleString(),
+      });
+    } catch (err) {
+      showToast(`Failed to generate statistics: ${err?.message || err}`);
+      setShowAIStatsModal(false);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
   if (!currentUser) return null;
 
   // ── Render ─────────────────────────────────────────────────
@@ -765,9 +833,6 @@ const AdminDashboard = () => {
           </div>
         </div>
         <div className="header-right">
-          <button className="btn-ai-stats" onClick={() => setShowAIStatsModal(true)}>
-            <span>🤖</span> AI Statistics
-          </button>
           <button className="btn-ai-stats" onClick={() => setShowAddDeptModal(true)}
             style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
             <span>➕</span> Add Dept
@@ -1014,32 +1079,48 @@ const AdminDashboard = () => {
               <div className="year-sections">
                 {Object.entries(groupedFaculty).map(([key, faculties]) => (
                   <div key={key} className="year-section">
-                    <h3 className="year-section-title">
-                      {selectedDepartment === 'S&H' ? `Branch: ${key}` : `Year ${key}`}
-                      <span className="faculty-count">({faculties.length})</span>
-                    </h3>
-                    <div className="faculty-grid-master">
-                      {faculties.length === 0 ? (
-                        <div className="empty-state-master">
-                          <span className="empty-icon-master">🧑‍🏫</span>
-                          <p>No faculty found</p>
-                        </div>
-                      ) : (
-                        faculties.map((faculty) => (
-                          <FacultyCard
-                            key={faculty.id}
-                            faculty={faculty}
-                            onOpen={openFacultyModal}
-                            onRemove={removeFaculty}
-                          />
-                        ))
-                      )}
+                    <div className="year-section-header">
+                      <h3 className="year-section-title">
+                        {selectedDepartment === 'S&H' ? `Branch: ${key}` : `Year ${key}`}
+                        <span className="faculty-count">({faculties.length})</span>
+                      </h3>
+                      <button
+                        className="btn-year-stats"
+                        disabled={faculties.length === 0 || isGeneratingReport}
+                        onClick={() => generateYearStatistics(selectedCollege, selectedDepartment, key, selectedDepartment === 'S&H')}
+                      >
+                        {isGeneratingReport ? '⏳ Generating…' : '📊 Generate Statistics'}
+                      </button>
                     </div>
+                    {faculties.length === 0 ? (
+                      <div className="empty-state-master">
+                        <span className="empty-icon-master">🧑‍🏫</span>
+                        <p>No faculty assigned yet</p>
+                      </div>
+                    ) : (
+                      <div className="faculty-list-master">
+                        <div className="flm-header">
+                          <span>Faculty Name</span>
+                          <span>Subject</span>
+                          <span>Sem</span>
+                          <span>Sec</span>
+                          <span></span>
+                        </div>
+                        <div className="flm-body">
+                          {faculties.map((faculty) => (
+                            <FacultyListRow
+                              key={faculty.id}
+                              faculty={faculty}
+                              onOpen={openFacultyModal}
+                              onRemove={removeFaculty}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            </div>
-          )}
         </div>
       </main>
 
@@ -1278,162 +1359,118 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* ===== AI STATS MODAL ===== */}
+      {/* ===== YEAR STATISTICS MODAL ===== */}
       {showAIStatsModal && (
         <div className="modal-overlay" onClick={() => setShowAIStatsModal(false)}>
-          <div className="ai-stats-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="ai-stats-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header-custom">
-              <div className="modal-title-section"><h2>🤖 AI Department Analytics</h2></div>
+              <div className="modal-title-section">
+                <h2>
+                  📊{' '}
+                  {aiStatsData
+                    ? (aiStatsData.isSHDept ? `${aiStatsData.yearOrBranch} Branch` : `Year ${aiStatsData.yearOrBranch}`) + ' — Statistics'
+                    : 'Generating Statistics…'}
+                </h2>
+              </div>
               <button className="modal-close-btn" onClick={() => setShowAIStatsModal(false)}>✕</button>
             </div>
             <div className="modal-body-custom ai-stats-body">
-              {!aiStatsData ? (
-                <div className="ai-stats-config">
-                  <h3>Configure Analytics Report</h3>
-                  <div className="config-section">
-                    <label>Select Department</label>
-                    <select value={aiStatsDept}
-                      onChange={(e) => { setAiStatsDept(e.target.value); setAiStatsYear(''); setAiStatsBranch(''); }}
-                      className="ai-select">
-                      <option value="">Choose Department</option>
-                      {Object.keys(allDepartments).map((dept) => (
-                        <option key={dept} value={dept}>{dept} ({allDepartments[dept]?.length || 0} Faculty)</option>
-                      ))}
-                    </select>
-                  </div>
-                  {aiStatsDept && (
-                    <div className="config-section">
-                      <label>Filter by Year</label>
-                      <select value={aiStatsYear} onChange={(e) => setAiStatsYear(e.target.value)} className="ai-select">
-                        <option value="">All Years</option>
-                        <option value="I">I Year</option>
-                        <option value="II">II Year</option>
-                        <option value="III">III Year</option>
-                        <option value="IV">IV Year</option>
-                      </select>
-                    </div>
-                  )}
-                  <div className="config-section">
-                    <label>Semester Comparison</label>
-                    <div className="semester-options">
-                      {['current', 'previous', 'both'].map((s) => (
-                        <button key={s} className={`semester-btn ${selectedSemester === s ? 'active' : ''}`}
-                          onClick={() => setSelectedSemester(s)}>
-                          {s === 'current' ? 'Current' : s === 'previous' ? 'Previous' : 'Both'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <button className="btn-generate-stats" onClick={generateAIStatistics} disabled={isGeneratingReport}>
-                    {isGeneratingReport ? <><span className="spinner-small" /> Analyzing...</> : <><span>🚀</span> Generate AI Report</>}
-                  </button>
+              {!aiStatsData || isGeneratingReport ? (
+                <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                  <div className="spinner-small" style={{ margin: '0 auto 16px', width: '36px', height: '36px', borderTopColor: '#667eea', borderWidth: '4px' }} />
+                  <p style={{ color: '#64748b', fontWeight: '600' }}>Fetching faculty statistics…</p>
+                </div>
+              ) : !aiStatsData.hasData ? (
+                <div style={{ textAlign: 'center', padding: '50px 20px' }}>
+                  <div style={{ fontSize: '52px', marginBottom: '14px' }}>📭</div>
+                  <h3 style={{ color: '#64748b', margin: '0 0 8px' }}>No Feedback Data Yet</h3>
+                  <p style={{ color: '#94a3b8', fontSize: '14px' }}>No responses recorded for this year/branch.</p>
                 </div>
               ) : (
                 <div className="ai-stats-report">
-                  {!aiStatsData.hasData ? (
-                    <div className="no-data-message">
-                      <span className="no-data-icon">📊</span>
-                      <h3>No Feedback Data Available</h3>
-                      <p>{aiStatsData.message}</p>
-                      <button className="btn-back-config" onClick={() => setAiStatsData(null)}>← Back</button>
-                    </div>
+                  <p className="report-timestamp" style={{ marginBottom: '20px' }}>Generated: {aiStatsData.generatedAt}</p>
+
+                  {/* ── Faculty Assignment Table ── */}
+                  <h3 className="ys-section-title">📋 Faculty Assignments</h3>
+                  <div className="ys-table-wrap">
+                    <table className="ys-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Faculty Name</th>
+                          <th>Subject</th>
+                          <th>Sections</th>
+                          <th>Responses</th>
+                          <th>Avg Rating</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiStatsData.tableRows.map((row, i) => (
+                          <tr key={i}
+                            className="ys-tr"
+                            onClick={() => { openFacultyModal(row.firstRecord); }}
+                            title="Click to view feedback details"
+                          >
+                            <td className="ys-td-num">{i + 1}</td>
+                            <td className="ys-td-name">{row.name}</td>
+                            <td className="ys-td-subject">{row.subject || '—'}</td>
+                            <td className="ys-td-sec">{row.sections}</td>
+                            <td className="ys-td-resp">{row.hasData ? row.totalResponses : '—'}</td>
+                            <td className="ys-td-rating">
+                              {row.avgRating !== null
+                                ? <span className="ys-rating-badge" style={{ background: getRatingColor(row.avgRating) }}>
+                                    {row.avgRating.toFixed(2)}
+                                  </span>
+                                : <span className="ys-no-data">No data</span>
+                              }
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* ── Top Performers ── */}
+                  <h3 className="ys-section-title" style={{ marginTop: '28px' }}>
+                    🏆 Top Performers
+                    <span className="ys-section-hint">(avg above 9.0)</span>
+                  </h3>
+                  {aiStatsData.topPerformers.length === 0 ? (
+                    <div className="ys-empty-band">No faculty above 9.0 average yet.</div>
                   ) : (
-                    <>
-                      <div className="report-header">
-                        <div className="report-title-section">
-                          <h2>{aiStatsData.department} Department</h2>
-                          {aiStatsData.filters && (
-                            <p style={{ margin: '4px 0', fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
-                              📌 Year: {aiStatsData.filters.year} | Branch: {aiStatsData.filters.branch}
-                            </p>
-                          )}
-                          <span className="report-timestamp">Generated: {aiStatsData.generatedAt}</span>
+                    <div className="ys-performer-row">
+                      {aiStatsData.topPerformers.map((r, idx) => (
+                        <div key={idx} className="ys-perf-card ys-perf-card--top">
+                          <div className="ys-rank ys-rank--top">{idx + 1}</div>
+                          <div className="ys-perf-name">{r.name}</div>
+                          <div className="ys-perf-meta">{r.subject} · Sec {r.sections}</div>
+                          <div className="ys-perf-score" style={{ color: '#10b981' }}>{r.avgRating.toFixed(2)}</div>
+                          <div className="ys-perf-sub">{r.totalResponses} responses</div>
+                          <div className="ys-bar"><div className="ys-bar-fill" style={{ width: `${(r.avgRating / 10) * 100}%`, background: '#10b981' }} /></div>
                         </div>
-                        <button className="btn-back-config" onClick={() => setAiStatsData(null)}>← Back</button>
-                      </div>
+                      ))}
+                    </div>
+                  )}
 
-                      <div className="overall-stats-grid">
-                        <div className="stat-card-ai">
-                          <span className="stat-icon-ai">⭐</span>
-                          <div className="stat-content-ai">
-                            <span className="stat-value-ai">{aiStatsData.overall.avgCurrentRating}</span>
-                            <span className="stat-label-ai">Average Rating</span>
-                          </div>
+                  {/* ── Needs Improvement ── */}
+                  <h3 className="ys-section-title" style={{ marginTop: '28px' }}>
+                    📈 Needs Improvement
+                    <span className="ys-section-hint">(avg below 8.0)</span>
+                  </h3>
+                  {aiStatsData.needsImprovement.length === 0 ? (
+                    <div className="ys-empty-band ys-empty-band--good">✅ All faculty performing at 8.0 or above.</div>
+                  ) : (
+                    <div className="ys-performer-row">
+                      {aiStatsData.needsImprovement.map((r, idx) => (
+                        <div key={idx} className="ys-perf-card ys-perf-card--low">
+                          <div className="ys-perf-name">{r.name}</div>
+                          <div className="ys-perf-meta">{r.subject} · Sec {r.sections}</div>
+                          <div className="ys-perf-score" style={{ color: '#ef4444' }}>{r.avgRating.toFixed(2)}</div>
+                          <div className="ys-perf-sub">{r.totalResponses} responses</div>
+                          <div className="ys-bar"><div className="ys-bar-fill" style={{ width: `${(r.avgRating / 10) * 100}%`, background: '#ef4444' }} /></div>
                         </div>
-                        <div className="stat-card-ai">
-                          <span className="stat-icon-ai">👥</span>
-                          <div className="stat-content-ai">
-                            <span className="stat-value-ai">{aiStatsData.overall.uniqueStudentResponses}</span>
-                            <span className="stat-label-ai">Total Responses</span>
-                          </div>
-                        </div>
-                        <div className="stat-card-ai">
-                          <span className="stat-icon-ai">🎯</span>
-                          <div className="stat-content-ai">
-                            <span className="stat-value-ai">{getPerformanceLabel(aiStatsData.overall.avgCurrentRating)}</span>
-                            <span className="stat-label-ai">Performance Level</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="performers-section">
-                        <h3>🏆 Top Performers <span style={{ fontSize: '13px', fontWeight: '600', color: '#64748b' }}>(Average above 9.0)</span></h3>
-                        {aiStatsData.topPerformers.length === 0 ? (
-                          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '10px', color: '#94a3b8', textAlign: 'center', fontSize: '14px' }}>
-                            No faculty has an average above 9.0 for the selected slot.
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '8px' }}>
-                            {aiStatsData.topPerformers.map((faculty, idx) => (
-                              <div key={faculty.id} style={{ minWidth: '200px', maxWidth: '220px', flexShrink: 0, padding: '16px', borderRadius: '14px', background: 'linear-gradient(135deg,#ecfdf5,#d1fae5)', border: '2px solid #10b981', textAlign: 'center' }}>
-                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#10b981', color: 'white', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>{idx + 1}</div>
-                                <div style={{ fontWeight: '800', fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>{faculty.name}</div>
-                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px' }}>{faculty.subject}</div>
-                                <div style={{ fontSize: '22px', fontWeight: '900', color: '#10b981' }}>{faculty.currentRating.toFixed(2)}</div>
-                                <div style={{ fontSize: '11px', color: '#15803d', fontWeight: '700' }}>out of 10</div>
-                                <div style={{ marginTop: '8px', height: '6px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                                  <div style={{ height: '100%', width: `${(faculty.currentRating / 10) * 100}%`, background: '#10b981', borderRadius: '4px' }} />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="performers-section">
-                        <h3>📈 Needs Improvement <span style={{ fontSize: '13px', fontWeight: '600', color: '#64748b' }}>(Average below 8.0)</span></h3>
-                        {aiStatsData.needsImprovement.length === 0 ? (
-                          <div style={{ padding: '16px', background: '#f0fdf4', borderRadius: '10px', color: '#15803d', textAlign: 'center', fontSize: '14px', fontWeight: '600' }}>
-                            ✅ All faculty are performing at 8.0 or above for the selected slot.
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '8px' }}>
-                            {aiStatsData.needsImprovement.map((faculty) => (
-                              <div key={faculty.id} style={{ minWidth: '220px', maxWidth: '240px', flexShrink: 0, padding: '16px', borderRadius: '14px', background: 'linear-gradient(135deg,#fef2f2,#fee2e2)', border: '2px solid #ef4444' }}>
-                                <div style={{ fontWeight: '800', fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>{faculty.name}</div>
-                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>{faculty.subject}</div>
-                                <div style={{ fontSize: '22px', fontWeight: '900', color: '#ef4444' }}>{faculty.currentRating.toFixed(2)}</div>
-                                <div style={{ fontSize: '11px', color: '#b91c1c', fontWeight: '700', marginBottom: '10px' }}>out of 10</div>
-                                <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
-                                  <div style={{ height: '100%', width: `${(faculty.currentRating / 10) * 100}%`, background: '#ef4444', borderRadius: '4px' }} />
-                                </div>
-                                {faculty.lowestParams && faculty.lowestParams.length > 0 && (
-                                  <div style={{ borderTop: '1px solid #fecaca', paddingTop: '8px' }}>
-                                    <div style={{ fontSize: '10px', fontWeight: '800', color: '#b91c1c', marginBottom: '6px', textTransform: 'uppercase' }}>📌 Focus Areas</div>
-                                    {faculty.lowestParams.map((p, i) => (
-                                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'white', borderRadius: '6px', marginBottom: '4px', fontSize: '11px' }}>
-                                        <span style={{ color: '#1e293b', fontWeight: '600', flex: 1, marginRight: '6px' }}>{p.param}</span>
-                                        <span style={{ fontWeight: '800', color: '#b91c1c', whiteSpace: 'nowrap' }}>{p.avg.toFixed(1)}/10</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}
