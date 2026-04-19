@@ -293,9 +293,6 @@ const AdminDashboard = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState({ type: '', college: '', dept: '', faculty: null });
 
-  const [showComparisonModal, setShowComparisonModal] = useState(false);
-  const [comparisonCollege, setComparisonCollege] = useState('');
-  const [comparisonDept, setComparisonDept] = useState('');
 
   const [suggestionData, setSuggestionData] = useState(null);
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
@@ -314,10 +311,6 @@ const AdminDashboard = () => {
     setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4500);
   }, []);
 
-  // ── Merge modal ────────────────────────────────────────────
-  const [showMergeModal, setShowMergeModal] = useState(false);
-  const [mergeSource, setMergeSource] = useState('');
-  const [mergeTarget, setMergeTarget] = useState('');
 
   // ── Data loading ───────────────────────────────────────────
   const loadAllData = useCallback(async () => {
@@ -442,32 +435,7 @@ const AdminDashboard = () => {
     showToast(`"${dept}" department deleted from ${college} College.`, 'success');
   };
 
-  const handleMergeColleges = () => {
-    const collegeList = Object.keys(deptStructure);
-    if (collegeList.length < 2) {
-      showToast('Need at least 2 colleges to merge.');
-      return;
-    }
-    setMergeSource(''); setMergeTarget('');
-    setShowMergeModal(true);
-  };
-
-  const confirmMerge = () => {
-    if (!mergeSource || !mergeTarget) { showToast('Select both source and target colleges.'); return; }
-    if (mergeSource === mergeTarget) { showToast('Source and target must be different colleges.'); return; }
-    if (!window.confirm(`🔄 Merge "${mergeSource}" INTO "${mergeTarget}"?\n\n"${mergeSource}" will be deleted after merge.`)) return;
-    const result = dataService.mergeColleges(mergeSource, mergeTarget);
-    if (result.success) {
-      refreshDeptStructure(); loadAllData();
-      setSelectedCollege('');
-      setShowMergeModal(false);
-      showToast(`"${mergeSource}" has been merged into "${mergeTarget}".`, 'success');
-    } else {
-      showToast(result.error);
-    }
-  };
-
-  const handleDeleteResponses = (type, college, dept, faculty) => {
+    const handleDeleteResponses = (type, college, dept, faculty) => {
     setDeleteTarget({ type, college, dept, faculty });
     setShowDeleteModal(true);
   };
@@ -714,23 +682,7 @@ const AdminDashboard = () => {
     return grouped;
   }, [filteredFaculty, selectedDepartment, currentDeptStructure]);
 
-  const getComparisonData = useCallback(() => {
-    if (!comparisonCollege || !comparisonDept) return [];
-    const facultyList = allDepartments[`${comparisonCollege}_${comparisonDept}`] || [];
-    return facultyList.map((faculty) => {
-      const cached = facultyStatsCache[faculty.id];
-      return {
-        ...faculty,
-        slot1Avg: cached?.slot1?.overallAverage || null,
-        slot2Avg: cached?.slot2?.overallAverage || null,
-        change: cached?.slot1 && cached?.slot2
-          ? (parseFloat(cached.slot2.overallAverage) - parseFloat(cached.slot1.overallAverage)).toFixed(2)
-          : null,
-        hasData: cached ? cached.totalResponses > 0 : false,
-      };
-    }).filter((f) => f.hasData);
-  }, [comparisonCollege, comparisonDept, allDepartments, facultyStatsCache]);
-
+  
   const generateAIStatistics = async () => {
     if (!aiStatsDept) { showToast('Please select a department first.'); return; }
     let facultyData = allDepartments[aiStatsDept] || [];
@@ -806,7 +758,7 @@ const AdminDashboard = () => {
         <div className="header-left">
           <div className="logo-small"><span>RISE</span></div>
           <div className="header-info">
-            <h2>{isPrincipal ? 'Principal Portal' : 'Master Admin Portal'}</h2>
+            <h2>{isPrincipal ? 'Principal Portal' : 'Admin Portal'}</h2>
             <span className="dept-badge admin">
               {isPrincipal ? '🏫 Gandhi College' : 'Global Control'}
             </span>
@@ -816,18 +768,16 @@ const AdminDashboard = () => {
           <button className="btn-ai-stats" onClick={() => setShowAIStatsModal(true)}>
             <span>🤖</span> AI Statistics
           </button>
-          <button className="btn-ai-stats" onClick={() => setShowComparisonModal(true)}
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' }}>
-            <span>📊</span> Compare
-          </button>
           <button className="btn-ai-stats" onClick={() => setShowAddDeptModal(true)}
             style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
             <span>➕</span> Add Dept
           </button>
-          <button className="btn-ai-stats" onClick={handleMergeColleges}
-            style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
-            <span>🔄</span> Merge
-          </button>
+          {!isPrincipal && selectedCollege && (
+  <button className="btn-ai-stats" onClick={() => handleDeleteCollege(selectedCollege)}
+    style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}>
+    <span>💀</span> Delete College
+  </button>
+)}
           <div className="user-info">
             <span className="user-icon">👑</span>
             <span className="user-name">{currentUser.username || currentUser.name}</span>
@@ -904,19 +854,12 @@ const AdminDashboard = () => {
                 </>
               )}
               {!isPrincipal && (
-                <>
-                  <button className="sidebar-menu-item"
-                    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: '12px', marginBottom: '6px' }}
-                    onClick={() => handleDeleteResponses('college', selectedCollege, '', null)}>
-                    <span className="menu-icon">🗑️</span> Delete All {selectedCollege} Responses
-                  </button>
-                  <button className="sidebar-menu-item"
-                    style={{ background: 'rgba(239,68,68,0.2)', color: '#b91c1c', fontSize: '12px' }}
-                    onClick={() => handleDeleteCollege(selectedCollege)}>
-                    <span className="menu-icon">💀</span> Delete {selectedCollege} College
-                  </button>
-                </>
-              )}
+  <button className="sidebar-menu-item"
+    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: '12px', marginBottom: '6px' }}
+    onClick={() => handleDeleteResponses('college', selectedCollege, '', null)}>
+    <span className="menu-icon">🗑️</span> Delete All {selectedCollege} Responses
+  </button>
+)}
             </div>
           )}
         </aside>
@@ -928,119 +871,106 @@ const AdminDashboard = () => {
               <div className="dashboard-welcome-header">
                 <div className="welcome-icon-small">🎓</div>
                 <div>
-                  <h2>Master Admin Analytics Portal</h2>
+                  <h2>Admin Analytics Portal</h2>
                   <p>Real-time faculty feedback satisfaction overview</p>
                 </div>
               </div>
 
-              <div className="college-analytics-grid">
-                {Object.values(colleges).map((college) => {
-                  const collegeData = Object.keys(deptStructure[college] || {}).map((dept) => {
-                    const deptFaculty = allDepartments[`${college}_${dept}`] || [];
-                    const stats = calculateDepartmentStats(deptFaculty);
-                    return { dept, avgRating: parseFloat(stats.avgRating), satisfactionRate: stats.satisfactionRate, totalResponses: stats.totalResponses, facultyCount: deptFaculty.length };
-                  });
-                  const maxRating = 10.0;
-                  return (
-                    <div key={college} className="college-analytics-card">
-                      <div className="college-card-header">
-                        <h3>🏛️ {college} College</h3>
-                        <button className="btn-view-college" onClick={() => setSelectedCollege(college)}>View Details →</button>
-                      </div>
-                      <div className="mathematical-chart">
-                        <div className="chart-title">Department Satisfaction Graph</div>
-                        <div className="chart-container">
-                          <div className="y-axis">
-                            <div className="y-axis-label">Rating</div>
-                            <div className="y-axis-ticks">
-                              {[10, 8, 6, 4, 2, 0].map((tick) => (
-                                <div key={tick} className="y-tick">
-                                  <span className="y-tick-label">{tick.toFixed(1)}</span>
-                                  <span className="y-tick-line"></span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="chart-area">
-                            <div className="chart-grid">
-                              {[10, 8, 6, 4, 2].map((line) => (
-                                <div key={line} className="grid-line" style={{ bottom: `${(line / maxRating) * 100}%` }} />
-                              ))}
-                            </div>
-                            <div className="chart-bars">
-                              {collegeData.map((data, index) => (
-                                <div key={data.dept} className="bar-wrapper">
-                                  <div className="bar-container">
-                                    <div className="bar-fill"
-                                      style={{ height: `${(data.avgRating / maxRating) * 100}%`, backgroundColor: getRatingColor(data.avgRating), animationDelay: `${index * 0.1}s` }}>
-                                      <span className="bar-value">{data.avgRating}</span>
-                                    </div>
-                                  </div>
-                                  <div className="bar-info">
-                                    <span className="bar-dept">{data.dept}</span>
-                                    <span className="bar-responses">{data.totalResponses}R</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="x-axis"><div className="x-axis-label">Departments</div></div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="college-pie-charts-section">
-                <h3>📊 Performance Distribution by College</h3>
-                <div className="pie-charts-grid">
-                  {Object.values(colleges).map((college) => {
-                    const collegeStats = calculateCollegeStats(college);
-                    return (
-                      <div key={college} className="college-pie-card">
-                        <div className="pie-card-header">
-                          <h4>{college} College</h4>
-                          <div className="pie-card-summary">
-                            <span className="pie-summary-item">👥 {collegeStats.totalFaculty} Faculty</span>
-                            <span className="pie-summary-item">⭐ {collegeStats.avgRating}/10 Avg</span>
-                          </div>
-                        </div>
-                        <div className="pie-chart-visual">
-                          {[
-                            { label: 'Outstanding', color: '#10b981', emoji: '🌟' },
-                            { label: 'Excellent', color: '#3b82f6', emoji: '⭐' },
-                            { label: 'Very Good', color: '#6366f1', emoji: '👍' },
-                            { label: 'Good', color: '#f59e0b', emoji: '👌' },
-                            { label: 'Average', color: '#f97316', emoji: '📈' },
-                            { label: 'Needs Improvement', color: '#ef4444', emoji: '📉' },
-                          ].map((category) => {
-                            const count = collegeStats.distribution[category.label] || 0;
-                            const percentage = collegeStats.totalFaculty > 0 ? ((count / collegeStats.totalFaculty) * 100).toFixed(1) : 0;
-                            return (
-                              <div key={category.label} className="pie-segment-item">
-                                <div className="pie-segment-header">
-                                  <span className="pie-emoji">{category.emoji}</span>
-                                  <span className="pie-label">{category.label}</span>
-                                </div>
-                                <div className="pie-bar-container">
-                                  <div className="pie-bar-fill" style={{ width: `${percentage}%`, backgroundColor: category.color }} />
-                                </div>
-                                <div className="pie-segment-stats">
-                                  <span>{count} faculty</span>
-                                  <span className="percentage-badge">{percentage}%</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="pie-card-footer">📝 Total Responses: {collegeStats.totalResponses}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+		{/* ===== COLLEGE CARDS ===== */}
+<div style={{
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: '32px',
+  marginTop: '48px',
+  flexWrap: 'wrap',
+}}>
+  {Object.values(colleges).map((college) => {
+    const collegeStats = calculateCollegeStats(college);
+    const deptCount = Object.keys(deptStructure[college] || {}).length;
+    return (
+      <div key={college}
+        onClick={() => setSelectedCollege(college)}
+        style={{
+          background: 'rgba(255,255,255,0.98)',
+          borderRadius: '24px',
+          padding: '36px 40px',
+          minWidth: '260px',
+          maxWidth: '300px',
+          cursor: 'pointer',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
+          border: '2px solid rgba(255,107,157,0.15)',
+          transition: 'all 0.3s',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '14px',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'translateY(-6px)';
+          e.currentTarget.style.boxShadow = '0 16px 48px rgba(255,107,157,0.20)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.10)';
+        }}
+      >
+        <div style={{ fontSize: '52px' }}>🏛️</div>
+        <div style={{
+          fontSize: '22px',
+          fontWeight: '900',
+          background: 'linear-gradient(135deg, #ff6b9d, #feca57)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}>
+          {college}
+        </div>
+        <div style={{ fontSize: '13px', color: '#636e72', fontWeight: '600' }}>College</div>
+        <div style={{
+          display: 'flex',
+          gap: '12px',
+          marginTop: '8px',
+          width: '100%',
+          justifyContent: 'center',
+        }}>
+          <div style={{
+            flex: 1,
+            background: 'linear-gradient(135deg, #ffeaa7, #fed6e3)',
+            borderRadius: '12px',
+            padding: '10px 8px',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: '20px', fontWeight: '900', color: '#2d3436' }}>{deptCount}</div>
+            <div style={{ fontSize: '11px', color: '#636e72', fontWeight: '600' }}>Depts</div>
+          </div>
+          <div style={{
+            flex: 1,
+            background: 'linear-gradient(135deg, #d1fae5, #a7f3d0)',
+            borderRadius: '12px',
+            padding: '10px 8px',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: '20px', fontWeight: '900', color: '#065f46' }}>{collegeStats.totalFaculty}</div>
+            <div style={{ fontSize: '11px', color: '#065f46', fontWeight: '600' }}>Faculty</div>
+          </div>
+        </div>
+        <div style={{
+          marginTop: '4px',
+          padding: '8px 20px',
+          background: 'linear-gradient(135deg, #ff6b9d, #feca57)',
+          color: 'white',
+          borderRadius: '10px',
+          fontSize: '13px',
+          fontWeight: '800',
+        }}>
+          View Details →
+        </div>
+      </div>
+    );
+  })}
+</div>
+             
           ) : !selectedDepartment ? (
             <div className="welcome-screen">
               <div className="welcome-icon">🏛️</div>
@@ -1523,107 +1453,6 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* ===== MERGE MODAL ===== */}
-      {showMergeModal && (
-        <div className="modal-overlay" onClick={() => setShowMergeModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '440px', width: '90%', padding: '28px', borderRadius: '16px' }}
-            onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ margin: '0 0 8px 0' }}>🔄 Merge Colleges</h2>
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              The source college will be deleted after merge. All its departments move to the target.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label className="sidebar-label">Merge FROM (will be deleted)</label>
-                <select className="sidebar-select" value={mergeSource}
-                  onChange={(e) => { setMergeSource(e.target.value); if (e.target.value === mergeTarget) setMergeTarget(''); }}>
-                  <option value="">Select source college</option>
-                  {Object.keys(deptStructure).map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="sidebar-label">Merge INTO (will be kept)</label>
-                <select className="sidebar-select" value={mergeTarget} onChange={(e) => setMergeTarget(e.target.value)}>
-                  <option value="">Select target college</option>
-                  {Object.keys(deptStructure).filter(c => c !== mergeSource).map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button onClick={confirmMerge} className="btn-ai-stats"
-                  style={{ flex: 1, background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}>
-                  🔄 Confirm Merge
-                </button>
-                <button onClick={() => setShowMergeModal(false)} className="btn-ai-stats"
-                  style={{ flex: 1, background: '#64748b' }}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== COMPARISON MODAL ===== */}
-      {showComparisonModal && (
-        <div className="modal-overlay" onClick={() => setShowComparisonModal(false)}>
-          <div className="modal-content"
-            style={{ maxWidth: '900px', width: '95%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}
-            onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-custom">
-              <div className="modal-title-section"><h2>📊 Semester Comparison Tool</h2></div>
-              <button className="modal-close-btn" onClick={() => setShowComparisonModal(false)}>✕</button>
-            </div>
-            <div className="modal-body-custom" style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-              <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
-                <select className="sidebar-select" value={comparisonCollege}
-                  onChange={(e) => { setComparisonCollege(e.target.value); setComparisonDept(''); }}>
-                  <option value="">Select College</option>
-                  {Object.keys(colleges).map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <select className="sidebar-select" value={comparisonDept} onChange={(e) => setComparisonDept(e.target.value)}>
-                  <option value="">Select Department</option>
-                  {comparisonCollege && deptStructure[comparisonCollege] &&
-                    Object.keys(deptStructure[comparisonCollege]).map((d) => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-              {comparisonCollege && comparisonDept && (() => {
-                const data = getComparisonData();
-                return (
-                  <div className="comparison-table">
-                    <div className="comparison-header" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
-                      <span>Faculty Name</span><span>Slot 1 (Prev)</span>
-                      <span>Slot 2 (Curr)</span><span>Change</span><span>Status</span>
-                    </div>
-                    {data.length === 0 ? (
-                      <p style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontWeight: '600' }}>No comparison data available.</p>
-                    ) : data.map((f) => {
-                      const change = parseFloat(f.change);
-                      return (
-                        <div key={f.id} className="comparison-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
-                          <div>
-                            <strong>{f.name}</strong>
-                            <div style={{ fontSize: '12px', color: '#64748b' }}>{f.subject}</div>
-                          </div>
-                          <div style={{ fontWeight: 'bold', color: '#64748b' }}>{f.slot1Avg || '-'}</div>
-                          <div style={{ fontWeight: 'bold', color: f.slot2Avg ? getRatingColor(parseFloat(f.slot2Avg)) : '#64748b' }}>{f.slot2Avg || '-'}</div>
-                          <div style={{ fontWeight: 'bold', color: change > 0 ? '#10b981' : change < 0 ? '#ef4444' : '#64748b' }}>
-                            {f.change ? (change > 0 ? `+${f.change}` : f.change) : '-'}
-                          </div>
-                          <div>
-                            <span style={{ padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', background: change > 0 ? '#d1fae5' : change < 0 ? '#fee2e2' : '#f3f4f6', color: change > 0 ? '#065f46' : change < 0 ? '#991b1b' : '#374151' }}>
-                              {change > 0 ? '↑ Improved' : change < 0 ? '↓ Declined' : '→ Stable'}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ===== SUGGESTION MODAL ===== */}
       {showSuggestionModal && (

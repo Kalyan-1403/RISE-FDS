@@ -113,25 +113,6 @@ const deleteCollege = async (college) => {
   return { success: true };
 };
 
-const mergeColleges = (source, target) => {
-  const structure = getDeptStructure();
-  if (!structure[source] || !structure[target])
-    return {
-      success: false,
-      error: 'Invalid colleges',
-    };
-  Object.keys(structure[source]).forEach(
-    (dept) => {
-      if (!structure[target][dept])
-        structure[target][dept] =
-          structure[source][dept];
-    }
-  );
-  delete structure[source];
-  saveDeptStructure(structure);
-  return { success: true };
-};
-
 // AUTH
 const login = async (loginData) => {
   try {
@@ -507,7 +488,6 @@ const dataService = {
   addDepartment,
   deleteDepartment,
   deleteCollege,
-  mergeColleges,
   login,
   register,
   registerAdmin,
