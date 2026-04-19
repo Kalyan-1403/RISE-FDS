@@ -994,6 +994,7 @@ const AdminDashboard = () => {
     		  );
   		})}
           </div>
+	</div>
              
           ) : !selectedDepartment ? (
             <div className="welcome-screen">
