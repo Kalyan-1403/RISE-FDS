@@ -877,37 +877,37 @@ const AdminDashboard = () => {
               </div>
 
 		{/* ===== COLLEGE CARDS ===== */}
-<div style={{
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  gap: '32px',
-  marginTop: '48px',
-  flexWrap: 'wrap',
-}}>
-  {Object.values(colleges).map((college) => {
-    const collegeStats = calculateCollegeStats(college);
-    const deptCount = Object.keys(deptStructure[college] || {}).length;
-    return (
-      <div key={college}
-        onClick={() => setSelectedCollege(college)}
-        style={{
-          background: 'rgba(255,255,255,0.98)',
-          borderRadius: '24px',
-          padding: '36px 40px',
-          minWidth: '260px',
-          maxWidth: '300px',
-          cursor: 'pointer',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
-          border: '2px solid rgba(255,107,157,0.15)',
-          transition: 'all 0.3s',
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '14px',
-        }}
-        onMouseEnter={e => {
+			<div style={{
+  				display: 'flex',
+  				justifyContent: 'center',
+ 				 alignItems: 'center',
+  				gap: '32px',
+  				marginTop: '48px'
+ 				flexWrap: 'wrap',
+				}}>
+  				{Object.values(colleges).map((college) => {
+   					 const collegeStats = calculateCollegeStats(college);
+   					 const deptCount = Object.keys(deptStructure[college] || {}).length;
+   						 return (
+    							  <div key={college}
+								onClick={() => setSelectedCollege(college)}
+      								  style={{
+       									   background: 'rgba(255,255,255,0.98)',
+       									   borderRadius: '24px',
+        								 padding: '36px 40px',
+         								 minWidth: '260px',
+         								 maxWidth: '300px',
+        								  cursor: 'pointer',
+									boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
+         								 border: '2px solid rgba(255,107,157,0.15)',
+         								 transition: 'all 0.3s',
+         								 textAlign: 'center',
+         								 display: 'flex',
+          								flexDirection: 'column',
+         								 alignItems: 'center',
+         								 gap: '14px',
+      									  }}
+        					onMouseEnter={e => {
           e.currentTarget.style.transform = 'translateY(-6px)';
           e.currentTarget.style.boxShadow = '0 16px 48px rgba(255,107,157,0.20)';
         }}
@@ -955,21 +955,22 @@ const AdminDashboard = () => {
             <div style={{ fontSize: '11px', color: '#065f46', fontWeight: '600' }}>Faculty</div>
           </div>
         </div>
-        <div style={{
-          marginTop: '4px',
-          padding: '8px 20px',
-          background: 'linear-gradient(135deg, #ff6b9d, #feca57)',
-          color: 'white',
-          borderRadius: '10px',
-          fontSize: '13px',
-          fontWeight: '800',
-        }}>
-          View Details →
-        </div>
-      </div>
-    );
-  })}
-</div>
+        							<div style={{
+        							  marginTop: '4px',
+         								 padding: '8px 20px',
+        								  background: 'linear-gradient(135deg, #ff6b9d, #feca57)',
+       									   color: 'white',
+        							  borderRadius: '10px',
+         							 fontSize: '13px',
+        						  fontWeight: '800',
+       							 }}>
+        					  View Details →
+      						  </div>
+      						</div>
+   						 );
+  					})}
+				</div>
+
              
           ) : !selectedDepartment ? (
             <div className="welcome-screen">
