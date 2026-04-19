@@ -878,48 +878,48 @@ const AdminDashboard = () => {
 
             {/* ===== COLLEGE CARDS ===== */}
             <div
-  style={{
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '32px',
-    marginTop: '48px',
-    flexWrap: 'wrap',
-  }}>
+ 		style={{
+    		display: 'flex',
+    		justifyContent: 'center',
+   		alignItems: 'center',
+    		gap: '32px',
+    		marginTop: '48px',
+    		flexWrap: 'wrap',
+  	}}>
 
-  {Object.values(colleges).map((college) => {
-    const collegeStats = calculateCollegeStats(college);
-    const deptCount = Object.keys(deptStructure[college] || {}).length;
+  	{Object.values(colleges).map((college) => {
+    		const collegeStats = calculateCollegeStats(college);
+    		const deptCount = Object.keys(deptStructure[college] || {}).length;
 
-    return (
-      <div
-        key={college}
-        onClick={() => setSelectedCollege(college)}
-        style={{
-          background: 'rgba(255,255,255,0.98)',
-          borderRadius: '24px',
-          padding: '36px 40px',
-          minWidth: '260px',
-          maxWidth: '300px',
-          cursor: 'pointer',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
-          border: '2px solid rgba(255,107,157,0.15)',
-          transition: 'all 0.3s',
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '14px',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'translateY(-6px)';
-          e.currentTarget.style.boxShadow = '0 16px 48px rgba(255,107,157,0.20)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.10)';
-        }}
-      >
+    		return (
+      			<div
+        			key={college}
+        			onClick={() => setSelectedCollege(college)}
+        			style={{
+          				background: 'rgba(255,255,255,0.98)',
+          				borderRadius: '24px',
+          				padding: '36px 40px',
+          				minWidth: '260px',
+          				maxWidth: '300px',
+          				cursor: 'pointer',
+          				boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
+          				border: '2px solid rgba(255,107,157,0.15)',
+          				transition: 'all 0.3s',
+          				textAlign: 'center',
+          				display: 'flex',
+          				flexDirection: 'column',
+          				alignItems: 'center',
+          				gap: '14px',
+       				 }}
+        	onMouseEnter={(e) => {
+          		e.currentTarget.style.transform = 'translateY(-6px)';
+          		e.currentTarget.style.boxShadow = '0 16px 48px rgba(255,107,157,0.20)';
+       		 }}
+        	onMouseLeave={(e) => {
+          		e.currentTarget.style.transform = 'translateY(0)';
+          		e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.10)';
+        	}}
+      	>
         <div style={{ fontSize: '52px' }}>🏛️</div>
         <div
           style={{
@@ -986,15 +986,14 @@ const AdminDashboard = () => {
             borderRadius: '10px',
             fontSize: '13px',
             fontWeight: '800',
-          }}
-        >
-          View Details →
-        </div>
-      </div>
-    );
-  })}
+          	}}
+        	>
+          	View Details →
+        	   </div>
+      		</div>
+    		  );
+  		})}
           </div>
-
              
           ) : !selectedDepartment ? (
             <div className="welcome-screen">
