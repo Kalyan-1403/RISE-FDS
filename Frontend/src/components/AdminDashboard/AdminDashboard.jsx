@@ -224,20 +224,37 @@ function Toast({ toast, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// FACULTY CARD SUB-COMPONENT
+// FACULTY CARD SUB-COMPONENT & GROUPING
 // ─────────────────────────────────────────────────────────────
+function groupFacultyRecords(facultyList) {
+  const groupedMap = new Map();
+  facultyList.forEach(f => {
+    const key = `${f.name}|${f.subject}|${f.sem}`;
+    if (!groupedMap.has(key)) {
+      groupedMap.set(key, { ...f, ids: [f.id], allSecs: [f.sec], records: [f] });
+    } else {
+      const existing = groupedMap.get(key);
+      existing.ids.push(f.id);
+      if (!existing.allSecs.includes(f.sec)) existing.allSecs.push(f.sec);
+      existing.records.push(f);
+    }
+  });
+  return Array.from(groupedMap.values());
+}
+
 function FacultyListRow({ faculty, onOpen, onRemove }) {
   return (
-    <div className="flm-row" onClick={() => onOpen(faculty)}>
+    // Note: We pass faculty.records[0] so the modal opens the stats for the first matched section correctly
+    <div className="flm-row" onClick={() => onOpen(faculty.records ? faculty.records[0] : faculty)}>
       <span className="flr-name">{faculty.name}</span>
       <span className="flr-subject">{faculty.subject || '—'}</span>
       <span className="flr-meta">Sem {faculty.sem}</span>
-      <span className="flr-meta">Sec {faculty.sec}</span>
+      <span className="flr-meta">Sec {faculty.allSecs ? faculty.allSecs.sort().join(' & ') : faculty.sec}</span>
       <span className="flr-actions" onClick={e => e.stopPropagation()}>
         <button
           className="faculty-remove-chip"
-          onClick={() => onRemove(faculty.id, faculty.name)}
-          title="Remove"
+          onClick={() => onRemove(faculty.ids || faculty.id, faculty.name)}
+          title="Remove Assignment"
         >✕</button>
       </span>
     </div>
@@ -602,10 +619,15 @@ const AdminDashboard = () => {
     });
   }, [allDepartments]);
 
-  const removeFaculty = async (facultyId, facultyName = 'this faculty') => {
+  const removeFaculty = async (ids, facultyName = 'this faculty') => {
     if (!window.confirm(`🗑️ Permanently remove "${facultyName}"?`)) return;
+    
+    const idArray = Array.isArray(ids) ? ids : [ids];
+    
     try {
-      await dataService.deleteFacultyById(facultyId);
+      for (const id of idArray) {
+        await dataService.deleteFacultyById(id);
+      }
       await loadAllData();
       showToast('Faculty removed successfully.', 'success');
     } catch (e) {
@@ -670,11 +692,15 @@ const AdminDashboard = () => {
     if (selectedDepartment === 'S&H') {
       const branches = currentDeptStructure['S&H'] || [];
       const grouped = {};
-      branches.forEach((branch) => { grouped[branch] = filteredFaculty.filter((f) => f.branch === branch); });
+      branches.forEach((branch) => { 
+        grouped[branch] = groupFacultyRecords(filteredFaculty.filter((f) => f.branch === branch)); 
+      });
       return grouped;
     }
     const grouped = {};
-    YEARS.forEach((year) => { grouped[year] = filteredFaculty.filter((f) => f.year === year); });
+    YEARS.forEach((year) => { 
+      grouped[year] = groupFacultyRecords(filteredFaculty.filter((f) => f.year === year)); 
+    });
     return grouped;
   }, [filteredFaculty, selectedDepartment, currentDeptStructure]);
 
