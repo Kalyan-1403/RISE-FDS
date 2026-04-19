@@ -931,12 +931,33 @@ const assignedCountBySec = useMemo(() => {
                     <div className="step-context-badge">{!isSH && `Year ${assignYear} · `}Semester {assignSem}</div>
                     <div className="form-field">
                       <label>Number of subjects this semester</label>
-                      <input type="number" min="1" max="10" value={assignSubjectCount}
+                      <input 
+                        type="number" 
+                        min="1" 
+                        max="10" 
+                        value={assignSubjectCount}
                         onChange={e => {
-                          const n = Math.max(1, Math.min(10, parseInt(e.target.value) || 1));
+                          const val = e.target.value;
+                          if (val === '') {
+                            setAssignSubjectCount('');
+                            return;
+                          }
+                          const n = Math.max(1, Math.min(10, parseInt(val, 10)));
                           setAssignSubjectCount(n);
-                          setAssignSubjectNames(prev => { const a = [...prev]; while (a.length < n) a.push(''); return a.slice(0, n); });
-                        }} style={{ width: '100px' }} />
+                          setAssignSubjectNames(prev => { 
+                            const a = [...prev]; 
+                            while (a.length < n) a.push(''); 
+                            return a.slice(0, n); 
+                          });
+                        }} 
+                        onBlur={() => {
+                          if (assignSubjectCount === '') {
+                            setAssignSubjectCount(1);
+                            setAssignSubjectNames(prev => prev.length > 0 ? [prev[0]] : ['']);
+                          }
+                        }}
+                        style={{ width: '100px' }} 
+                      />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {Array.from({ length: assignSubjectCount }, (_, i) => (
