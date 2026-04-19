@@ -882,7 +882,7 @@ const AdminDashboard = () => {
   				justifyContent: 'center',
  				 alignItems: 'center',
   				gap: '32px',
-  				marginTop: '48px'
+  				marginTop: '48px',
  				flexWrap: 'wrap',
 				}}>
   				{Object.values(colleges).map((college) => {
