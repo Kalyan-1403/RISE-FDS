@@ -282,9 +282,18 @@ const assignedCountBySec = useMemo(() => {
     finally { setIsSaving(false); }
   };
 
-  const deleteFaculty = async (id) => {
+  const deleteFaculty = async (ids) => {
     if (!window.confirm('Remove this faculty entry? This cannot be undone.')) return;
-    try { await dataService.deleteFacultyById(id); await loadDashboardData(); }
+    
+    // Check if it's a single ID (from the pool) or an array of IDs (from the grouped table)
+    const idArray = Array.isArray(ids) ? ids : [ids];
+    
+    try { 
+      for (const id of idArray) {
+        await dataService.deleteFacultyById(id); 
+      }
+      await loadDashboardData(); 
+    }
     catch (err) { showToast(err.message || 'Delete failed.'); }
   };
 
@@ -1180,6 +1189,30 @@ function SectionNavItem({ s, count, isActive, isEditing, editName, editStrength,
 }
 
 function FacultyTable({ rows, onDelete, onPDF, onExcel }) {
+  // Group rows by Name + Subject + Semester
+  const groupedMap = new Map();
+
+  rows.forEach(f => {
+    const key = `${f.name}|${f.subject}|${f.sem}`;
+    if (!groupedMap.has(key)) {
+      groupedMap.set(key, {
+        ...f,
+        ids: [f.id], // Track all IDs for deletion
+        allSecs: [f.sec], // Track all sections
+        records: [f] // Keep original records for PDF/Excel
+      });
+    } else {
+      const existing = groupedMap.get(key);
+      existing.ids.push(f.id);
+      if (!existing.allSecs.includes(f.sec)) {
+        existing.allSecs.push(f.sec);
+      }
+      existing.records.push(f);
+    }
+  });
+
+  const groupedRows = Array.from(groupedMap.values());
+
   return (
     <div className="fac-table-wrap">
       <table className="fac-table">
@@ -1192,16 +1225,20 @@ function FacultyTable({ rows, onDelete, onPDF, onExcel }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(f => (
-            <tr key={f.id} className="fac-tr">
-              <td className="ft-name">{f.name}</td>
-              <td className="ft-subject">{f.subject || <span className="ft-empty">—</span>}</td>
-              <td><span className="ft-badge">Sem {f.sem} · {f.sec}</span></td>
+          {groupedRows.map(g => (
+            <tr key={g.ids.join('-')} className="fac-tr">
+              <td className="ft-name">{g.name}</td>
+              <td className="ft-subject">{g.subject || <span className="ft-empty">—</span>}</td>
+              <td>
+                <span className="ft-badge">
+                  Sem {g.sem} · {g.allSecs.sort().join(' & ')}
+                </span>
+              </td>
               <td>
                 <div className="ft-actions">
-                  <button type="button" className="fta-btn fta-del" onClick={() => onDelete(f.id)} title="Remove">🗑</button>
-                  <button type="button" className="fta-btn fta-pdf" onClick={() => onPDF(f)} title="Download PDF">📄</button>
-                  <button type="button" className="fta-btn fta-xls" onClick={() => onExcel(f)} title="Download Excel">📊</button>
+                  <button type="button" className="fta-btn fta-del" onClick={() => onDelete(g.ids)} title="Remove Assignment">🗑</button>
+                  <button type="button" className="fta-btn fta-pdf" onClick={() => onPDF(g.records[0])} title="Download PDF">📄</button>
+                  <button type="button" className="fta-btn fta-xls" onClick={() => onExcel(g.records[0])} title="Download Excel">📊</button>
                 </div>
               </td>
             </tr>
