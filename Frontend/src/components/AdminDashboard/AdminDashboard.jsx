@@ -3,6 +3,7 @@ import React, {
   useState,
   useMemo,
   useCallback,
+  useRef,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -71,7 +72,6 @@ const NEGATIVE_KEYWORDS = [
   { keyword: 'no doubt', label: 'Doubt Clearing Issues' },
 ];
 
-// Moved to module level — defined once, not recreated on every analyzeSuggestions call
 const FACILITY_KEYWORDS = [
   { keyword: 'lab', label: 'Lab Facilities' },
   { keyword: 'library', label: 'Library' },
@@ -115,7 +115,7 @@ const FACILITY_KEYWORDS = [
 // ─────────────────────────────────────────────────────────────
 // MODULE-LEVEL FUNCTIONS
 // ─────────────────────────────────────────────────────────────
-// ─── Sentence Templates ───────────────────────────────────────────────────────
+
 const POSITIVE_PARAM_TEMPLATES = [
   (name, param, avg) => `${name} demonstrated strong ${param.toLowerCase()} with an average rating of ${avg}/10, reflecting consistent student appreciation.`,
   (name, param, avg) => `Students rated ${name}'s ${param.toLowerCase()} highly at ${avg}/10, indicating clear satisfaction in this area.`,
@@ -140,31 +140,22 @@ function generateFacultySuggestions(facultyName, parameterStats, comments, total
   const positives = [];
   const negatives = [];
 
-  // --- Rating-based insights ---
   if (parameterStats) {
     const params = Object.entries(parameterStats)
       .map(([param, stats]) => ({ param, avg: parseFloat(stats.average) }))
       .sort((a, b) => b.avg - a.avg);
-
-    // Top 2 params above 8.5
     params.filter(p => p.avg >= 8.5).slice(0, 2).forEach((p, i) => {
-      const tmpl = POSITIVE_PARAM_TEMPLATES[i % POSITIVE_PARAM_TEMPLATES.length];
-      positives.push(tmpl(name, p.param, p.avg.toFixed(1)));
+      positives.push(POSITIVE_PARAM_TEMPLATES[i % POSITIVE_PARAM_TEMPLATES.length](name, p.param, p.avg.toFixed(1)));
     });
-
-    // All params below 7.0
     params.filter(p => p.avg < 7.0).forEach((p, i) => {
-      const tmpl = NEGATIVE_PARAM_TEMPLATES[i % NEGATIVE_PARAM_TEMPLATES.length];
-      negatives.push(tmpl(name, p.param, p.avg.toFixed(1)));
+      negatives.push(NEGATIVE_PARAM_TEMPLATES[i % NEGATIVE_PARAM_TEMPLATES.length](name, p.param, p.avg.toFixed(1)));
     });
   }
 
-  // --- Comment-based insights ---
   if (comments && comments.length > 0) {
     const allText = comments.filter(Boolean).join(' ').toLowerCase();
     const posThemes = {};
     const negThemes = {};
-
     POSITIVE_KEYWORDS.forEach(({ keyword, label }) => {
       const matches = (allText.match(new RegExp(`\\b${keyword}\\b`, 'g')) || []).length;
       if (matches > 0) posThemes[label] = (posThemes[label] || 0) + matches;
@@ -173,35 +164,20 @@ function generateFacultySuggestions(facultyName, parameterStats, comments, total
       const matches = (allText.match(new RegExp(`\\b${keyword}\\b`, 'g')) || []).length;
       if (matches > 0) negThemes[label] = (negThemes[label] || 0) + matches;
     });
-
-    Object.entries(posThemes)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
-      .forEach(([theme, count], i) => {
-        const tmpl = POSITIVE_COMMENT_TEMPLATES[i % POSITIVE_COMMENT_TEMPLATES.length];
-        positives.push(tmpl(name, count, theme.toLowerCase()));
-      });
-
-    Object.entries(negThemes)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
-      .forEach(([theme, count], i) => {
-        const tmpl = NEGATIVE_COMMENT_TEMPLATES[i % NEGATIVE_COMMENT_TEMPLATES.length];
-        negatives.push(tmpl(name, count, theme.toLowerCase()));
-      });
+    Object.entries(posThemes).sort(([, a], [, b]) => b - a).slice(0, 3).forEach(([theme, count], i) => {
+      positives.push(POSITIVE_COMMENT_TEMPLATES[i % POSITIVE_COMMENT_TEMPLATES.length](name, count, theme.toLowerCase()));
+    });
+    Object.entries(negThemes).sort(([, a], [, b]) => b - a).slice(0, 3).forEach(([theme, count], i) => {
+      negatives.push(NEGATIVE_COMMENT_TEMPLATES[i % NEGATIVE_COMMENT_TEMPLATES.length](name, count, theme.toLowerCase()));
+    });
   }
 
-  if (positives.length === 0 && negatives.length === 0) {
-    return null;
-  }
-
+  if (positives.length === 0 && negatives.length === 0) return null;
   if (positives.length === 0) positives.push(`${name} has not received notable positive highlights in current data.`);
   if (negatives.length === 0) negatives.push(`No specific areas of concern were raised for ${name}.`);
-
   return { positives, negatives, rawCount: comments?.length || 0 };
 }
 
-// Kept for dept-level table: returns top3 and bottom3 param entries
 function getParamRankings(parameterStats) {
   if (!parameterStats) return { top3: [], bottom3: [] };
   const sorted = Object.entries(parameterStats)
@@ -213,10 +189,67 @@ function getParamRankings(parameterStats) {
   };
 }
 
+// ── Pure helpers — module-level (no closure needed) ──────────
+function getTopParameters(parameterStats) {
+  if (!parameterStats) return [];
+  return Object.entries(parameterStats)
+    .filter(([, stats]) => parseFloat(stats.average) > 9)
+    .sort(([, a], [, b]) => parseFloat(b.average) - parseFloat(a.average))
+    .slice(0, 2)
+    .map(([param, stats]) => ({ parameter: param, ...stats }));
+}
+
+function getBottomParameters(parameterStats) {
+  if (!parameterStats) return [];
+  return Object.entries(parameterStats)
+    .filter(([, stats]) => parseFloat(stats.average) < 8)
+    .sort(([, a], [, b]) => parseFloat(a.average) - parseFloat(b.average))
+    .map(([param, stats]) => ({ parameter: param, ...stats }));
+}
+
+// ─────────────────────────────────────────────────────────────
+// TOAST COMPONENT (matches HoDDashboard)
+// ─────────────────────────────────────────────────────────────
+function Toast({ toast, onClose }) {
+  if (!toast.show) return null;
+  return (
+    <div className={`hod-toast hod-toast--${toast.type}`}>
+      <span className="toast-icon">
+        {toast.type === 'success' ? '✅' : toast.type === 'info' ? 'ℹ️' : '⚠️'}
+      </span>
+      <span className="toast-msg">{toast.message}</span>
+      <button className="toast-close" onClick={onClose}>✕</button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// FACULTY CARD SUB-COMPONENT
+// ─────────────────────────────────────────────────────────────
+function FacultyCard({ faculty, onOpen, onRemove }) {
+  return (
+    <div className="faculty-card-compact" onClick={() => onOpen(faculty)}>
+      <div className="faculty-card-header-compact">
+        <span className="faculty-year-badge-compact">Y{faculty.year}</span>
+        <button
+          className="faculty-remove-chip"
+          onClick={(e) => { e.stopPropagation(); onRemove(faculty.id, faculty.name); }}
+          title="Remove faculty"
+        >✕</button>
+      </div>
+      <h4 className="faculty-name-compact">{faculty.name}</h4>
+      <p className="faculty-subject-compact">{faculty.subject}</p>
+      <div className="faculty-meta-compact">
+        <span>Sem {faculty.sem}</span>
+        <span>Sec {faculty.sec}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────
-
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user: currentUser, logoutUser } = useAuth();
@@ -246,8 +279,11 @@ const AdminDashboard = () => {
     return obj;
   });
 
-  // Faculty stats cache (fetched from backend)
+  // Faculty stats cache
   const [facultyStatsCache, setFacultyStatsCache] = useState({});
+  const facultyStatsCacheRef = useRef({});
+  // Keep ref in sync with state so callbacks don't go stale
+  useEffect(() => { facultyStatsCacheRef.current = facultyStatsCache; }, [facultyStatsCache]);
 
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
   const [newDeptName, setNewDeptName] = useState('');
@@ -255,12 +291,7 @@ const AdminDashboard = () => {
   const [newDeptBranches, setNewDeptBranches] = useState('');
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState({
-    type: '',
-    college: '',
-    dept: '',
-    faculty: null,
-  });
+  const [deleteTarget, setDeleteTarget] = useState({ type: '', college: '', dept: '', faculty: null });
 
   const [showComparisonModal, setShowComparisonModal] = useState(false);
   const [comparisonCollege, setComparisonCollege] = useState('');
@@ -268,11 +299,7 @@ const AdminDashboard = () => {
 
   const [suggestionData, setSuggestionData] = useState(null);
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
-  const [suggestionTarget, setSuggestionTarget] = useState({
-    college: '',
-    dept: '',
-    faculty: '',
-  });
+  const [suggestionTarget, setSuggestionTarget] = useState({ college: '', dept: '', faculty: '' });
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [llmSummary, setLlmSummary] = useState(null);
 
@@ -280,13 +307,23 @@ const AdminDashboard = () => {
   const [adminSuggestionsData, setAdminSuggestionsData] = useState(null);
   const [isLoadingAdminSuggestions, setIsLoadingAdminSuggestions] = useState(false);
 
+  // ── Toast ──────────────────────────────────────────────────
+  const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
+  const showToast = useCallback((message, type = 'error') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4500);
+  }, []);
+
+  // ── Merge modal ────────────────────────────────────────────
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeSource, setMergeSource] = useState('');
+  const [mergeTarget, setMergeTarget] = useState('');
+
   // ── Data loading ───────────────────────────────────────────
   const loadAllData = useCallback(async () => {
     try {
       const dashData = await dataService.getAdminDashboard();
-      if (dashData.masterFacultyList) {
-        setAllDepartments(dashData.masterFacultyList);
-      }
+      if (dashData.masterFacultyList) setAllDepartments(dashData.masterFacultyList);
     } catch (e) {
       console.warn('Backend unavailable, using cached data');
       try {
@@ -301,7 +338,6 @@ const AdminDashboard = () => {
   const refreshDeptStructure = useCallback(() => {
     const struct = dataService.getDeptStructure();
     const newStruct = JSON.parse(JSON.stringify(struct || {}));
-    // Filter to Gandhi only for Principal
     const filtered = scopedCollege
       ? Object.fromEntries(Object.entries(newStruct).filter(([k]) => k === scopedCollege))
       : newStruct;
@@ -311,45 +347,37 @@ const AdminDashboard = () => {
     setColleges(obj);
   }, [scopedCollege]);
 
-  // Fetch faculty stats from backend
-  const fetchFacultyStats = useCallback(
-    async (facultyId) => {
-      if (facultyStatsCache[facultyId]) {
-        return facultyStatsCache[facultyId];
-      }
-      try {
-        const stats = await dataService.getFacultyStats(facultyId);
-        if (stats) {
-          setFacultyStatsCache((prev) => ({ ...prev, [facultyId]: stats }));
-        }
-        return stats;
-      } catch (e) {
-        console.warn(`Failed to fetch stats for faculty ${facultyId}`);
-        return null;
-      }
-    },
-    [facultyStatsCache]
-  );
+  // ── Fixed: no facultyStatsCache in deps — reads from ref ──
+  const fetchFacultyStats = useCallback(async (facultyId) => {
+    if (facultyStatsCacheRef.current[facultyId]) {
+      return facultyStatsCacheRef.current[facultyId];
+    }
+    try {
+      const stats = await dataService.getFacultyStats(facultyId);
+      if (stats) setFacultyStatsCache(prev => ({ ...prev, [facultyId]: stats }));
+      return stats;
+    } catch (e) {
+      console.warn(`Failed to fetch stats for faculty ${facultyId}`);
+      return null;
+    }
+  }, []); // stable — reads cache via ref
 
-  const prefetchStatsForFacultyList = useCallback(
-    async (facultyList) => {
-      const updates = {};
-      for (const fac of facultyList) {
-        try {
-          if (facultyStatsCache[fac.id]) continue;
-          const stats = await dataService.getFacultyStats(fac.id);
-          if (stats) updates[fac.id] = stats;
-        } catch {
-          // ignore per-faculty errors
-        }
+  const prefetchStatsForFacultyList = useCallback(async (facultyList) => {
+    const updates = {};
+    for (const fac of facultyList) {
+      try {
+        if (facultyStatsCacheRef.current[fac.id]) continue;
+        const stats = await dataService.getFacultyStats(fac.id);
+        if (stats) updates[fac.id] = stats;
+      } catch {
+        // ignore per-faculty errors
       }
-      if (Object.keys(updates).length > 0) {
-        setFacultyStatsCache((prev) => ({ ...prev, ...updates }));
-      }
-      return updates;
-    },
-    [facultyStatsCache]
-  );
+    }
+    if (Object.keys(updates).length > 0) {
+      setFacultyStatsCache(prev => ({ ...prev, ...updates }));
+    }
+    return updates;
+  }, []); // stable — reads cache via ref
 
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'admin') {
@@ -358,54 +386,27 @@ const AdminDashboard = () => {
     }
     loadAllData();
     refreshDeptStructure();
-
-    const handleFocus = () => {
-      loadAllData();
-      setFacultyStatsCache({});
-    };
+    const handleFocus = () => { loadAllData(); setFacultyStatsCache({}); };
     window.addEventListener('focus', handleFocus);
     return () => { window.removeEventListener('focus', handleFocus); };
   }, [currentUser, navigate, loadAllData, refreshDeptStructure]);
 
   // ── Handlers ───────────────────────────────────────────────
-  const handleLogout = () => {
-    logoutUser();
-    navigate('/', { replace: true });
-  };
+  const handleLogout = () => { logoutUser(); navigate('/', { replace: true }); };
 
-  const openFacultyModal = useCallback(
-    async (faculty) => {
-      const stats = await fetchFacultyStats(faculty.id);
-      setSelectedFaculty({
-        ...faculty,
-        statistics: stats,
-        hasFeedback: stats ? stats.totalResponses > 0 : false,
-      });
-      setShowFacultyModal(true);
-    },
-    [fetchFacultyStats]
-  );
-
-  const getTopParameters = (parameterStats) => {
-    if (!parameterStats) return [];
-    return Object.entries(parameterStats)
-      .filter(([, stats]) => parseFloat(stats.average) > 9)
-      .sort(([, a], [, b]) => parseFloat(b.average) - parseFloat(a.average))
-      .slice(0, 2)
-      .map(([param, stats]) => ({ parameter: param, ...stats }));
-  };
-
-  const getBottomParameters = (parameterStats) => {
-    if (!parameterStats) return [];
-    return Object.entries(parameterStats)
-      .filter(([, stats]) => parseFloat(stats.average) < 8)
-      .sort(([, a], [, b]) => parseFloat(a.average) - parseFloat(b.average))
-      .map(([param, stats]) => ({ parameter: param, ...stats }));
-  };
+  const openFacultyModal = useCallback(async (faculty) => {
+    const stats = await fetchFacultyStats(faculty.id);
+    setSelectedFaculty({
+      ...faculty,
+      statistics: stats,
+      hasFeedback: stats ? stats.totalResponses > 0 : false,
+    });
+    setShowFacultyModal(true);
+  }, [fetchFacultyStats]);
 
   const handleAddDepartment = async () => {
     if (!newDeptCollege || !newDeptName.trim()) {
-      alert('⚠️ Please select a college and enter department name');
+      showToast('Please select a college and enter a department name.');
       return;
     }
     const branches = newDeptBranches.trim()
@@ -413,64 +414,56 @@ const AdminDashboard = () => {
       : null;
     const result = await dataService.addDepartment(newDeptCollege, newDeptName.trim(), branches);
     if (result.success) {
-      alert(`✅ Department "${newDeptName.trim()}" added to ${newDeptCollege} College!`);
+      showToast(`Department "${newDeptName.trim()}" added to ${newDeptCollege} College.`, 'success');
       refreshDeptStructure();
       setShowAddDeptModal(false);
-      setNewDeptName('');
-      setNewDeptCollege('');
-      setNewDeptBranches('');
+      setNewDeptName(''); setNewDeptCollege(''); setNewDeptBranches('');
     } else {
-      alert(`⚠️ ${result.error}`);
+      showToast(result.error);
     }
   };
 
   const handleDeleteCollege = async (college) => {
-    if (!window.confirm(
-      `🚨 DANGER! This will permanently delete "${college}" College and ALL its data.\n\nThis action CANNOT be undone.`
-    )) return;
+    if (!window.confirm(`🚨 DANGER! This will permanently delete "${college}" College and ALL its data.\n\nThis action CANNOT be undone.`)) return;
     if (!window.confirm(`⚠️ FINAL CONFIRMATION: Delete "${college}" College?`)) return;
     await dataService.deleteCollege(college);
     refreshDeptStructure();
     await loadAllData();
-    setSelectedCollege('');
-    setSelectedDepartment('');
-    alert(`✅ "${college}" College has been deleted.`);
+    setSelectedCollege(''); setSelectedDepartment('');
+    showToast(`"${college}" College has been deleted.`, 'success');
   };
 
   const handleDeleteDepartment = async (college, dept) => {
-    if (!window.confirm(
-      `🗑️ Delete "${dept}" department from ${college} College?\n\nAll faculty and feedback data will be permanently removed.`
-    )) return;
+    if (!window.confirm(`🗑️ Delete "${dept}" department from ${college} College?\n\nAll faculty and feedback data will be permanently removed.`)) return;
     await dataService.deleteDepartment(college, dept);
     refreshDeptStructure();
     await loadAllData();
     setSelectedDepartment('');
-    alert(`✅ "${dept}" department deleted from ${college} College.`);
+    showToast(`"${dept}" department deleted from ${college} College.`, 'success');
   };
 
   const handleMergeColleges = () => {
     const collegeList = Object.keys(deptStructure);
     if (collegeList.length < 2) {
-      alert('⚠️ Need at least 2 colleges to merge');
+      showToast('Need at least 2 colleges to merge.');
       return;
     }
-    const source = prompt(
-      `Enter the college to MERGE FROM (will be deleted):\nAvailable: ${collegeList.join(', ')}`
-    );
-    if (!source || !collegeList.includes(source)) return;
-    const target = prompt(
-      `Enter the college to MERGE INTO (will keep):\nAvailable: ${collegeList.filter((c) => c !== source).join(', ')}`
-    );
-    if (!target || !collegeList.includes(target) || target === source) return;
-    if (!window.confirm(`🔄 Merge "${source}" INTO "${target}"?\n\n"${source}" will be deleted after merge.`)) return;
-    const result = dataService.mergeColleges(source, target);
+    setMergeSource(''); setMergeTarget('');
+    setShowMergeModal(true);
+  };
+
+  const confirmMerge = () => {
+    if (!mergeSource || !mergeTarget) { showToast('Select both source and target colleges.'); return; }
+    if (mergeSource === mergeTarget) { showToast('Source and target must be different colleges.'); return; }
+    if (!window.confirm(`🔄 Merge "${mergeSource}" INTO "${mergeTarget}"?\n\n"${mergeSource}" will be deleted after merge.`)) return;
+    const result = dataService.mergeColleges(mergeSource, mergeTarget);
     if (result.success) {
-      refreshDeptStructure();
-      loadAllData();
+      refreshDeptStructure(); loadAllData();
       setSelectedCollege('');
-      alert(`✅ "${source}" has been merged into "${target}".`);
+      setShowMergeModal(false);
+      showToast(`"${mergeSource}" has been merged into "${mergeTarget}".`, 'success');
     } else {
-      alert(`⚠️ ${result.error}`);
+      showToast(result.error);
     }
   };
 
@@ -481,38 +474,25 @@ const AdminDashboard = () => {
 
   const confirmDeleteResponses = async (downloadFirst) => {
     const { type, college, dept, faculty } = deleteTarget;
-    if (downloadFirst) {
-      if (
-        type === 'faculty' &&
-        faculty &&
-        faculty.statistics &&
-        faculty.statistics.totalResponses > 0
-      ) {
-        generateFacultyPDF(faculty, faculty.statistics, college);
-      }
+    if (downloadFirst && type === 'faculty' && faculty?.statistics?.totalResponses > 0) {
+      generateFacultyPDF(faculty, faculty.statistics, college);
     }
     try {
-      if (type === 'faculty' && faculty) {
-        await dataService.deleteFacultyFeedback(faculty.id);
-      } else if (type === 'department') {
-        await dataService.deleteDepartmentFeedback(college, dept);
-      } else if (type === 'college') {
-        await dataService.deleteCollegeFeedback(college);
-      }
+      if (type === 'faculty' && faculty) await dataService.deleteFacultyFeedback(faculty.id);
+      else if (type === 'department') await dataService.deleteDepartmentFeedback(college, dept);
+      else if (type === 'college') await dataService.deleteCollegeFeedback(college);
       await loadAllData();
       setFacultyStatsCache({});
       setShowDeleteModal(false);
       setShowFacultyModal(false);
-      alert('✅ Responses deleted successfully!');
+      showToast('Responses deleted successfully.', 'success');
     } catch (err) {
       console.error('Delete failed:', err);
-      alert(`⚠️ ${err.message || 'Failed to delete responses'}`);
+      showToast(err.message || 'Failed to delete responses.');
     }
   };
 
   // ── Shared comment parser ──────────────────────────────────
-  // Eliminates duplicated parsing logic between openSuggestionModal
-  // and openAdminSuggestionsView.
   const parseCommentEntries = (rawData, facCode) => {
     const facComments = [];
     const generalComments = [];
@@ -554,23 +534,15 @@ const AdminDashboard = () => {
         if (facultyName) {
           const { facComments, generalComments } = parseCommentEntries(rawData, fac.code);
           comments.push(...facComments, ...generalComments);
-          // Get stats for this specific faculty
-          const stats = facultyStatsCache[fac.id] || await dataService.getFacultyStats(fac.id);
+          const stats = facultyStatsCacheRef.current[fac.id] || await dataService.getFacultyStats(fac.id);
           if (stats) {
-            // Use latest slot available
-            parameterStats = stats.hasSlot2
-              ? stats.slot2?.parameterStats
-              : stats.slot1?.parameterStats;
+            parameterStats = stats.hasSlot2 ? stats.slot2?.parameterStats : stats.slot1?.parameterStats;
             totalResponses = stats.totalResponses || 0;
           }
         } else {
-          rawData.forEach((entry) => {
-            if (entry.comments) comments.push(entry.comments);
-          });
+          rawData.forEach((entry) => { if (entry.comments) comments.push(entry.comments); });
         }
-      } catch (e) {
-        // Skip failed faculty
-      }
+      } catch (e) { /* skip */ }
     }
 
     const uniqueComments = [...new Set(comments)];
@@ -580,7 +552,7 @@ const AdminDashboard = () => {
     setIsSummarizing(false);
   };
 
-const openAdminSuggestionsView = async (college, dept) => {
+  const openAdminSuggestionsView = async (college, dept) => {
     setIsLoadingAdminSuggestions(true);
     setShowAdminSuggestionsView(true);
     setAdminSuggestionsData(null);
@@ -596,38 +568,32 @@ const openAdminSuggestionsView = async (college, dept) => {
         const { facComments, generalComments } = parseCommentEntries(rawData, fac.code);
         allCollegeComments.push(...generalComments);
 
-        // Fetch stats for param rankings
         let paramRankings = { top3: [], bottom3: [] };
         try {
-          const stats = facultyStatsCache[fac.id] || await dataService.getFacultyStats(fac.id);
+          const stats = facultyStatsCacheRef.current[fac.id] || await dataService.getFacultyStats(fac.id);
           if (stats) {
-            const paramStats = stats.hasSlot2
-              ? stats.slot2?.parameterStats
-              : stats.slot1?.parameterStats;
+            const paramStats = stats.hasSlot2 ? stats.slot2?.parameterStats : stats.slot1?.parameterStats;
             paramRankings = getParamRankings(paramStats);
           }
         } catch (e) { /* skip */ }
 
         facultySummaries.push({
           name: fac.name,
-          code: fac.code,
           subject: fac.subject || '',
           commentCount: facComments.length,
           paramRankings,
-          suggestions: generateFacultySuggestions(fac.name, 
-            paramRankings.top3.length > 0 ? Object.fromEntries(
-              [...paramRankings.top3, ...paramRankings.bottom3].map(p => [p.param, { average: p.avg }])
-            ) : null,
+          suggestions: generateFacultySuggestions(
+            fac.name,
+            paramRankings.top3.length > 0
+              ? Object.fromEntries([...paramRankings.top3, ...paramRankings.bottom3].map(p => [p.param, { average: p.avg }]))
+              : null,
             [...new Set(facComments)].filter(Boolean),
             0
           ),
         });
-      } catch (e) {
-        // Skip failed faculty
-      }
+      } catch (e) { /* skip */ }
     }
 
-    // College-level general comment summary
     const allCollegeText = [...new Set(allCollegeComments)].filter(Boolean);
     let collegeSummary = null;
     if (allCollegeText.length > 0) {
@@ -662,105 +628,63 @@ const openAdminSuggestionsView = async (college, dept) => {
     return 'Needs Improvement';
   };
 
-  const getFacultyByCollegeDept = useCallback(
-    (college, dept, subDept = null) => {
-      const deptKey = `${college}_${dept}`;
-      const deptFaculty = allDepartments[deptKey] || [];
-      return deptFaculty.filter((f) => {
-        const matchCollege = f.college === college;
-        if (subDept && dept === 'S&H') return matchCollege && f.branch === subDept;
-        return matchCollege;
-      });
-    },
-    [allDepartments]
-  );
+  const getFacultyByCollegeDept = useCallback((college, dept, subDept = null) => {
+    const deptKey = `${college}_${dept}`;
+    const deptFaculty = allDepartments[deptKey] || [];
+    return deptFaculty.filter((f) => {
+      const matchCollege = f.college === college;
+      if (subDept && dept === 'S&H') return matchCollege && f.branch === subDept;
+      return matchCollege;
+    });
+  }, [allDepartments]);
 
-  // removeFaculty — deptKey param removed (was unused)
   const removeFaculty = async (facultyId, facultyName = 'this faculty') => {
     if (!window.confirm(`🗑️ Permanently remove "${facultyName}"?`)) return;
     try {
       await dataService.deleteFacultyById(facultyId);
       await loadAllData();
-      alert('✅ Faculty removed successfully!');
+      showToast('Faculty removed successfully.', 'success');
     } catch (e) {
-      alert(`⚠️ ${e.message || 'Failed to remove faculty.'}`);
+      showToast(e.message || 'Failed to remove faculty.');
     }
   };
 
-  const calculateDepartmentStats = useCallback(
-    (facultyList) => {
-      if (!facultyList || facultyList.length === 0)
-        return { avgRating: 0, satisfactionRate: 0, totalResponses: 0 };
+  const calculateDepartmentStats = useCallback((facultyList) => {
+    if (!facultyList || facultyList.length === 0) return { avgRating: 0, satisfactionRate: 0, totalResponses: 0 };
+    let totalRating = 0, totalResponses = 0, facultyWithFeedback = 0;
+    facultyList.forEach((faculty) => {
+      const cached = facultyStatsCache[faculty.id];
+      if (cached && cached.totalResponses > 0) {
+        const rating = parseFloat(cached.slot2?.overallAverage || cached.slot1?.overallAverage || 0);
+        totalRating += rating;
+        totalResponses += cached.totalResponses;
+        facultyWithFeedback++;
+      }
+    });
+    const avgRating = facultyWithFeedback > 0 ? (totalRating / facultyWithFeedback).toFixed(2) : 0;
+    const satisfactionRate = facultyWithFeedback > 0 ? ((avgRating / 10) * 100).toFixed(1) : 0;
+    return { avgRating, satisfactionRate: parseFloat(satisfactionRate), totalResponses };
+  }, [facultyStatsCache]);
 
-      let totalRating = 0;
-      let totalResponses = 0;
-      let facultyWithFeedback = 0;
-
-      facultyList.forEach((faculty) => {
+  const calculateCollegeStats = useCallback((college) => {
+    const distribution = { Outstanding: 0, Excellent: 0, 'Very Good': 0, Good: 0, Average: 0, 'Needs Improvement': 0 };
+    let totalFaculty = 0, totalResponses = 0, totalRating = 0, facultyWithFeedback = 0;
+    Object.keys(deptStructure[college] || {}).forEach((dept) => {
+      const deptFaculty = allDepartments[`${college}_${dept}`] || [];
+      deptFaculty.forEach((faculty) => {
+        totalFaculty++;
         const cached = facultyStatsCache[faculty.id];
         if (cached && cached.totalResponses > 0) {
-          const rating = parseFloat(
-            cached.slot2?.overallAverage || cached.slot1?.overallAverage || 0
-          );
-          totalRating += rating;
-          totalResponses += cached.totalResponses;
-          facultyWithFeedback++;
+          const rating = parseFloat(cached.slot2?.overallAverage || cached.slot1?.overallAverage || 0);
+          totalRating += rating; totalResponses += cached.totalResponses; facultyWithFeedback++;
+          const label = getPerformanceLabel(rating);
+          if (distribution[label] !== undefined) distribution[label]++;
         }
       });
-
-      const avgRating =
-        facultyWithFeedback > 0 ? (totalRating / facultyWithFeedback).toFixed(2) : 0;
-      const satisfactionRate =
-        facultyWithFeedback > 0 ? ((avgRating / 10) * 100).toFixed(1) : 0;
-      return {
-        avgRating,
-        satisfactionRate: parseFloat(satisfactionRate),
-        totalResponses,
-      };
-    },
-    [facultyStatsCache]
-  );
-
-  const calculateCollegeStats = useCallback(
-    (college) => {
-      const distribution = {
-        Outstanding: 0,
-        Excellent: 0,
-        'Very Good': 0,
-        Good: 0,
-        Average: 0,
-        'Needs Improvement': 0,
-      };
-      let totalFaculty = 0;
-      let totalResponses = 0;
-      let totalRating = 0;
-      let facultyWithFeedback = 0;
-
-      Object.keys(deptStructure[college] || {}).forEach((dept) => {
-        const deptKey = `${college}_${dept}`;
-        const deptFaculty = allDepartments[deptKey] || [];
-        deptFaculty.forEach((faculty) => {
-          totalFaculty++;
-          const cached = facultyStatsCache[faculty.id];
-          if (cached && cached.totalResponses > 0) {
-            const rating = parseFloat(
-              cached.slot2?.overallAverage || cached.slot1?.overallAverage || 0
-            );
-            totalRating += rating;
-            totalResponses += cached.totalResponses;
-            facultyWithFeedback++;
-            const label = getPerformanceLabel(rating);
-            if (distribution[label] !== undefined) distribution[label]++;
-          }
-        });
-      });
-
-      const avgRating =
-        facultyWithFeedback > 0 ? (totalRating / facultyWithFeedback).toFixed(2) : '0.00';
-      return { distribution, totalFaculty, totalResponses, avgRating };
-    },
-    [deptStructure, allDepartments, facultyStatsCache]
-  );
+    });
+    const avgRating = facultyWithFeedback > 0 ? (totalRating / facultyWithFeedback).toFixed(2) : '0.00';
+    return { distribution, totalFaculty, totalResponses, avgRating };
+  }, [deptStructure, allDepartments, facultyStatsCache]);
 
   // ── Derived / memoised ─────────────────────────────────────
   const currentDeptStructure = selectedCollege ? deptStructure[selectedCollege] || {} : {};
@@ -774,10 +698,7 @@ const openAdminSuggestionsView = async (college, dept) => {
     if (!searchTerm.trim()) return currentFaculty;
     const term = searchTerm.toLowerCase();
     return currentFaculty.filter(
-      (f) =>
-        f.name.toLowerCase().includes(term) ||
-        f.code.toLowerCase().includes(term) ||
-        f.subject.toLowerCase().includes(term)
+      (f) => f.name.toLowerCase().includes(term) || f.subject.toLowerCase().includes(term)
     );
   }, [searchTerm, currentFaculty]);
 
@@ -785,157 +706,89 @@ const openAdminSuggestionsView = async (college, dept) => {
     if (selectedDepartment === 'S&H') {
       const branches = currentDeptStructure['S&H'] || [];
       const grouped = {};
-      branches.forEach((branch) => {
-        grouped[branch] = filteredFaculty.filter((f) => f.branch === branch);
-      });
-      return grouped;
-    } else {
-      const grouped = {};
-      YEARS.forEach((year) => {
-        grouped[year] = filteredFaculty.filter((f) => f.year === year);
-      });
+      branches.forEach((branch) => { grouped[branch] = filteredFaculty.filter((f) => f.branch === branch); });
       return grouped;
     }
+    const grouped = {};
+    YEARS.forEach((year) => { grouped[year] = filteredFaculty.filter((f) => f.year === year); });
+    return grouped;
   }, [filteredFaculty, selectedDepartment, currentDeptStructure]);
 
   const getComparisonData = useCallback(() => {
     if (!comparisonCollege || !comparisonDept) return [];
-    const deptKey = `${comparisonCollege}_${comparisonDept}`;
-    const facultyList = allDepartments[deptKey] || [];
-    return facultyList
-      .map((faculty) => {
-        const cached = facultyStatsCache[faculty.id];
-        return {
-          ...faculty,
-          slot1Avg: cached?.slot1?.overallAverage || null,
-          slot2Avg: cached?.slot2?.overallAverage || null,
-          change:
-            cached?.slot1 && cached?.slot2
-              ? (
-                  parseFloat(cached.slot2.overallAverage) -
-                  parseFloat(cached.slot1.overallAverage)
-                ).toFixed(2)
-              : null,
-          hasData: cached ? cached.totalResponses > 0 : false,
-        };
-      })
-      .filter((f) => f.hasData);
+    const facultyList = allDepartments[`${comparisonCollege}_${comparisonDept}`] || [];
+    return facultyList.map((faculty) => {
+      const cached = facultyStatsCache[faculty.id];
+      return {
+        ...faculty,
+        slot1Avg: cached?.slot1?.overallAverage || null,
+        slot2Avg: cached?.slot2?.overallAverage || null,
+        change: cached?.slot1 && cached?.slot2
+          ? (parseFloat(cached.slot2.overallAverage) - parseFloat(cached.slot1.overallAverage)).toFixed(2)
+          : null,
+        hasData: cached ? cached.totalResponses > 0 : false,
+      };
+    }).filter((f) => f.hasData);
   }, [comparisonCollege, comparisonDept, allDepartments, facultyStatsCache]);
 
   const generateAIStatistics = async () => {
-    if (!aiStatsDept) {
-      alert('⚠️ Please select a department first!');
-      return;
-    }
-
+    if (!aiStatsDept) { showToast('Please select a department first.'); return; }
     let facultyData = allDepartments[aiStatsDept] || [];
     if (aiStatsYear) facultyData = facultyData.filter((f) => f.year === aiStatsYear);
-
-    if (facultyData.length === 0) {
-      alert('⚠️ No faculty data for selected filters!');
-      return;
-    }
+    if (facultyData.length === 0) { showToast('No faculty data for selected filters.'); return; }
 
     setIsGeneratingReport(true);
-
     try {
       await prefetchStatsForFacultyList(facultyData);
-
       const rows = facultyData.map((faculty) => {
-        const cached = facultyStatsCache[faculty.id];
-        const s1 =
-          cached?.slot1?.overallAverage != null
-            ? parseFloat(cached.slot1.overallAverage)
-            : null;
-        const s2 =
-          cached?.slot2?.overallAverage != null
-            ? parseFloat(cached.slot2.overallAverage)
-            : null;
-        // Apply slot filter based on selectedSemester
+        const cached = facultyStatsCacheRef.current[faculty.id];
+        const s1 = cached?.slot1?.overallAverage != null ? parseFloat(cached.slot1.overallAverage) : null;
+        const s2 = cached?.slot2?.overallAverage != null ? parseFloat(cached.slot2.overallAverage) : null;
         let currentRating = 0;
-        if (selectedSemester === 'current') {
-          currentRating = s2 ?? s1 ?? 0;
-        } else if (selectedSemester === 'previous') {
-          currentRating = s1 ?? 0;
-        } else {
-          // both: average of available slots
-          if (s1 !== null && s2 !== null) currentRating = (s1 + s2) / 2;
-          else currentRating = s2 ?? s1 ?? 0;
-        }
+        if (selectedSemester === 'current') currentRating = s2 ?? s1 ?? 0;
+        else if (selectedSemester === 'previous') currentRating = s1 ?? 0;
+        else { if (s1 !== null && s2 !== null) currentRating = (s1 + s2) / 2; else currentRating = s2 ?? s1 ?? 0; }
         const previousRating = s1 ?? 0;
         const change = s1 !== null && s2 !== null ? (s2 - s1).toFixed(2) : null;
 
-        // Get lowest-rated parameter for needs improvement display
-        // Get 2 lowest-rated parameters for needs improvement display
         let lowestParams = [];
         const slotKey = selectedSemester === 'previous' ? 'slot1' : 'slot2';
         const paramStats = cached?.[slotKey]?.parameterStats || cached?.slot1?.parameterStats;
         if (paramStats) {
           lowestParams = Object.entries(paramStats)
             .map(([param, stats]) => ({ param, avg: parseFloat(stats.average) }))
-            .sort((a, b) => a.avg - b.avg)
-            .slice(0, 2);
+            .sort((a, b) => a.avg - b.avg).slice(0, 2);
         }
 
         return {
-          ...faculty,
-          slot1Avg: s1,
-          slot2Avg: s2,
-          change,
-          currentRating: parseFloat(currentRating),
-          previousRating: parseFloat(previousRating),
+          ...faculty, slot1Avg: s1, slot2Avg: s2, change,
+          currentRating: parseFloat(currentRating), previousRating: parseFloat(previousRating),
           improvement: (currentRating - previousRating).toFixed(2),
           totalResponses: cached?.totalResponses || 0,
           hasData: cached ? cached.totalResponses > 0 : false,
           lowestParams,
         };
-    });
+      });
 
       const facultyWithData = rows.filter((r) => r.hasData);
-
       if (facultyWithData.length === 0) {
-        setAiStatsData({
-          department: aiStatsDept,
-          semester: selectedSemester,
-          hasData: false,
-          message: 'No feedback data for selected filters.',
-          filters: { year: aiStatsYear || 'All', branch: aiStatsBranch || 'All' },
-        });
+        setAiStatsData({ department: aiStatsDept, semester: selectedSemester, hasData: false, message: 'No feedback data for selected filters.', filters: { year: aiStatsYear || 'All', branch: aiStatsBranch || 'All' } });
         return;
       }
 
-      const avgCurrentRating = (
-        facultyWithData.reduce((sum, f) => sum + f.currentRating, 0) / facultyWithData.length
-      ).toFixed(2);
-      // Top performers: avg ABOVE 9.0, top 3
-      const topPerformers = [...facultyWithData]
-        .filter(f => f.currentRating > 9.0)
-        .sort((a, b) => b.currentRating - a.currentRating)
-        .slice(0, 3);
-
-      // Needs improvement: avg BELOW 8.0, all of them
-      const needsImprovement = [...facultyWithData]
-        .filter(f => f.currentRating < 8.0)
-        .sort((a, b) => a.currentRating - b.currentRating);
+      const avgCurrentRating = (facultyWithData.reduce((sum, f) => sum + f.currentRating, 0) / facultyWithData.length).toFixed(2);
+      const topPerformers = [...facultyWithData].filter(f => f.currentRating > 9.0).sort((a, b) => b.currentRating - a.currentRating).slice(0, 3);
+      const needsImprovement = [...facultyWithData].filter(f => f.currentRating < 8.0).sort((a, b) => a.currentRating - b.currentRating);
 
       setAiStatsData({
-        department: aiStatsDept,
-        semester: selectedSemester,
-        hasData: true,
-        facultyStats: facultyWithData,
-        filters: { year: aiStatsYear || 'All', branch: aiStatsBranch || 'All' },
-        overall: {
-          avgCurrentRating: parseFloat(avgCurrentRating),
-          uniqueStudentResponses: facultyWithData.reduce((s, f) => s + f.totalResponses, 0),
-          totalFaculty: facultyWithData.length,
-        },
-        topPerformers,
-        needsImprovement,
-        generatedAt: new Date().toLocaleString(),
+        department: aiStatsDept, semester: selectedSemester, hasData: true,
+        facultyStats: facultyWithData, filters: { year: aiStatsYear || 'All', branch: aiStatsBranch || 'All' },
+        overall: { avgCurrentRating: parseFloat(avgCurrentRating), uniqueStudentResponses: facultyWithData.reduce((s, f) => s + f.totalResponses, 0), totalFaculty: facultyWithData.length },
+        topPerformers, needsImprovement, generatedAt: new Date().toLocaleString(),
       });
     } catch (err) {
       console.error('AI Stats error:', err);
-      alert(`⚠️ Failed to generate report: ${err?.message || err}`);
+      showToast(`Failed to generate report: ${err?.message || err}`);
     } finally {
       setIsGeneratingReport(false);
     }
@@ -943,45 +796,15 @@ const openAdminSuggestionsView = async (college, dept) => {
 
   if (!currentUser) return null;
 
-  // ── Faculty card renderer ──────────────────────────────────
-  const renderFacultyCard = (faculty) => (
-    <div
-      key={faculty.id}
-      className="faculty-card-compact"
-      onClick={() => openFacultyModal(faculty)}
-    >
-      <div className="faculty-card-header-compact">
-        <span className="faculty-code-badge-compact">{faculty.code}</span>
-        <span className="faculty-year-badge-compact">Y{faculty.year}</span>
-        <button
-          className="faculty-remove-chip"
-          onClick={(e) => {
-            e.stopPropagation();
-            removeFaculty(faculty.id, faculty.name);
-          }}
-          title="Remove faculty"
-        >
-          ✕
-        </button>
-      </div>
-      <h4 className="faculty-name-compact">{faculty.name}</h4>
-      <p className="faculty-subject-compact">{faculty.subject}</p>
-      <div className="faculty-meta-compact">
-        <span>Sem {faculty.sem}</span>
-        <span>Sec {faculty.sec}</span>
-      </div>
-    </div>
-  );
-
   // ── Render ─────────────────────────────────────────────────
   return (
     <div className="dashboard-container">
+      <Toast toast={toast} onClose={() => setToast({ show: false, message: '', type: 'error' })} />
+
       {/* ===== HEADER ===== */}
       <header className="dashboard-header">
         <div className="header-left">
-          <div className="logo-small">
-            <span>RISE</span>
-          </div>
+          <div className="logo-small"><span>RISE</span></div>
           <div className="header-info">
             <h2>{isPrincipal ? 'Principal Portal' : 'Master Admin Portal'}</h2>
             <span className="dept-badge admin">
@@ -993,25 +816,16 @@ const openAdminSuggestionsView = async (college, dept) => {
           <button className="btn-ai-stats" onClick={() => setShowAIStatsModal(true)}>
             <span>🤖</span> AI Statistics
           </button>
-          <button
-            className="btn-ai-stats"
-            onClick={() => setShowComparisonModal(true)}
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' }}
-          >
+          <button className="btn-ai-stats" onClick={() => setShowComparisonModal(true)}
+            style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' }}>
             <span>📊</span> Compare
           </button>
-          <button
-            className="btn-ai-stats"
-            onClick={() => setShowAddDeptModal(true)}
-            style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-          >
+          <button className="btn-ai-stats" onClick={() => setShowAddDeptModal(true)}
+            style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
             <span>➕</span> Add Dept
           </button>
-          <button
-            className="btn-ai-stats"
-            onClick={handleMergeColleges}
-            style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
-          >
+          <button className="btn-ai-stats" onClick={handleMergeColleges}
+            style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
             <span>🔄</span> Merge
           </button>
           <div className="user-info">
@@ -1027,38 +841,24 @@ const openAdminSuggestionsView = async (college, dept) => {
       <main className="master-layout">
         {/* ===== SIDEBAR ===== */}
         <aside className="master-sidebar">
-          <div className="sidebar-header">
-            <h3>🏛️ Navigation</h3>
-          </div>
+          <div className="sidebar-header"><h3>🏛️ Navigation</h3></div>
 
           <div className="sidebar-section">
             <div className="search-bar-sidebar">
               <span className="search-icon">🔍</span>
-              <input
-                type="text"
-                placeholder="Search faculty..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+              <input type="text" placeholder="Search faculty..." value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
           </div>
 
           <div className="sidebar-section">
             <label className="sidebar-label">Select College</label>
-            <select
-              value={selectedCollege}
-              onChange={(e) => {
-                setSelectedCollege(e.target.value);
-                setSelectedDepartment('');
-                setSelectedSubDept('');
-              }}
-              className="sidebar-select"
-            >
+            <select value={selectedCollege}
+              onChange={(e) => { setSelectedCollege(e.target.value); setSelectedDepartment(''); setSelectedSubDept(''); }}
+              className="sidebar-select">
               <option value="">Choose College</option>
               {Object.values(colleges).map((college) => (
-                <option key={college} value={college}>
-                  {college}
-                </option>
+                <option key={college} value={college}>{college}</option>
               ))}
             </select>
           </div>
@@ -1071,11 +871,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                   <li key={deptCode}>
                     <button
                       className={`sidebar-menu-item ${selectedDepartment === deptCode ? 'active' : ''}`}
-                      onClick={() => {
-                        setSelectedDepartment(deptCode);
-                        setSelectedSubDept('');
-                      }}
-                    >
+                      onClick={() => { setSelectedDepartment(deptCode); setSelectedSubDept(''); }}>
                       <span className="menu-icon">🏫</span>
                       <span>{deptCode}</span>
                     </button>
@@ -1086,82 +882,38 @@ const openAdminSuggestionsView = async (college, dept) => {
           )}
 
           {selectedCollege && (
-            <div
-              className="sidebar-section"
-              style={{ marginTop: '16px', paddingTop: '16px', borderTop: '2px solid #e2e8f0' }}
-            >
+            <div className="sidebar-section" style={{ marginTop: '16px', paddingTop: '16px', borderTop: '2px solid #e2e8f0' }}>
               <h4 className="sidebar-heading">⚙️ Management</h4>
               {selectedDepartment && (
                 <>
-                  <button
-                    className="sidebar-menu-item"
-                    style={{
-                      background: 'rgba(139,92,246,0.1)',
-                      color: '#7c3aed',
-                      fontSize: '12px',
-                      marginBottom: '6px',
-                    }}
-                    onClick={() => openAdminSuggestionsView(selectedCollege, selectedDepartment)}
-                  >
-                    <span className="menu-icon">💡</span>{' '}
-                    View Suggestions
+                  <button className="sidebar-menu-item"
+                    style={{ background: 'rgba(139,92,246,0.1)', color: '#7c3aed', fontSize: '12px', marginBottom: '6px' }}
+                    onClick={() => openAdminSuggestionsView(selectedCollege, selectedDepartment)}>
+                    <span className="menu-icon">💡</span> View Suggestions
                   </button>
-                  <button
-                    className="sidebar-menu-item"
-                    style={{
-                      background: 'rgba(239,68,68,0.1)',
-                      color: '#ef4444',
-                      fontSize: '12px',
-                      marginBottom: '6px',
-                    }}
-                    onClick={() =>
-                      handleDeleteResponses('department', selectedCollege, selectedDepartment, null)
-                    }
-                  >
-                    <span className="menu-icon">🗑️</span>{' '}
-                    Delete {selectedDepartment} Responses
+                  <button className="sidebar-menu-item"
+                    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: '12px', marginBottom: '6px' }}
+                    onClick={() => handleDeleteResponses('department', selectedCollege, selectedDepartment, null)}>
+                    <span className="menu-icon">🗑️</span> Delete {selectedDepartment} Responses
                   </button>
-                  <button
-                    className="sidebar-menu-item"
-                    style={{
-                      background: 'rgba(239,68,68,0.15)',
-                      color: '#dc2626',
-                      fontSize: '12px',
-                      marginBottom: '6px',
-                    }}
-                    onClick={() => handleDeleteDepartment(selectedCollege, selectedDepartment)}
-                  >
-                    <span className="menu-icon">❌</span>{' '}
-                    Delete {selectedDepartment} Dept
+                  <button className="sidebar-menu-item"
+                    style={{ background: 'rgba(239,68,68,0.15)', color: '#dc2626', fontSize: '12px', marginBottom: '6px' }}
+                    onClick={() => handleDeleteDepartment(selectedCollege, selectedDepartment)}>
+                    <span className="menu-icon">❌</span> Delete {selectedDepartment} Dept
                   </button>
                 </>
               )}
               {!isPrincipal && (
                 <>
-                  <button
-                    className="sidebar-menu-item"
-                    style={{
-                      background: 'rgba(239,68,68,0.1)',
-                      color: '#ef4444',
-                      fontSize: '12px',
-                      marginBottom: '6px',
-                    }}
-                    onClick={() => handleDeleteResponses('college', selectedCollege, '', null)}
-                  >
-                    <span className="menu-icon">🗑️</span>{' '}
-                    Delete All {selectedCollege} Responses
+                  <button className="sidebar-menu-item"
+                    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: '12px', marginBottom: '6px' }}
+                    onClick={() => handleDeleteResponses('college', selectedCollege, '', null)}>
+                    <span className="menu-icon">🗑️</span> Delete All {selectedCollege} Responses
                   </button>
-                  <button
-                    className="sidebar-menu-item"
-                    style={{
-                      background: 'rgba(239,68,68,0.2)',
-                      color: '#b91c1c',
-                      fontSize: '12px',
-                    }}
-                    onClick={() => handleDeleteCollege(selectedCollege)}
-                  >
-                    <span className="menu-icon">💀</span>{' '}
-                    Delete {selectedCollege} College
+                  <button className="sidebar-menu-item"
+                    style={{ background: 'rgba(239,68,68,0.2)', color: '#b91c1c', fontSize: '12px' }}
+                    onClick={() => handleDeleteCollege(selectedCollege)}>
+                    <span className="menu-icon">💀</span> Delete {selectedCollege} College
                   </button>
                 </>
               )}
@@ -1184,29 +936,16 @@ const openAdminSuggestionsView = async (college, dept) => {
               <div className="college-analytics-grid">
                 {Object.values(colleges).map((college) => {
                   const collegeData = Object.keys(deptStructure[college] || {}).map((dept) => {
-                    const deptKey = `${college}_${dept}`;
-                    const deptFaculty = allDepartments[deptKey] || [];
+                    const deptFaculty = allDepartments[`${college}_${dept}`] || [];
                     const stats = calculateDepartmentStats(deptFaculty);
-                    return {
-                      dept,
-                      avgRating: parseFloat(stats.avgRating),
-                      satisfactionRate: stats.satisfactionRate,
-                      totalResponses: stats.totalResponses,
-                      facultyCount: deptFaculty.length,
-                    };
+                    return { dept, avgRating: parseFloat(stats.avgRating), satisfactionRate: stats.satisfactionRate, totalResponses: stats.totalResponses, facultyCount: deptFaculty.length };
                   });
                   const maxRating = 10.0;
-
                   return (
                     <div key={college} className="college-analytics-card">
                       <div className="college-card-header">
                         <h3>🏛️ {college} College</h3>
-                        <button
-                          className="btn-view-college"
-                          onClick={() => setSelectedCollege(college)}
-                        >
-                          View Details →
-                        </button>
+                        <button className="btn-view-college" onClick={() => setSelectedCollege(college)}>View Details →</button>
                       </div>
                       <div className="mathematical-chart">
                         <div className="chart-title">Department Satisfaction Graph</div>
@@ -1225,25 +964,15 @@ const openAdminSuggestionsView = async (college, dept) => {
                           <div className="chart-area">
                             <div className="chart-grid">
                               {[10, 8, 6, 4, 2].map((line) => (
-                                <div
-                                  key={line}
-                                  className="grid-line"
-                                  style={{ bottom: `${(line / maxRating) * 100}%` }}
-                                />
+                                <div key={line} className="grid-line" style={{ bottom: `${(line / maxRating) * 100}%` }} />
                               ))}
                             </div>
                             <div className="chart-bars">
                               {collegeData.map((data, index) => (
                                 <div key={data.dept} className="bar-wrapper">
                                   <div className="bar-container">
-                                    <div
-                                      className="bar-fill"
-                                      style={{
-                                        height: `${(data.avgRating / maxRating) * 100}%`,
-                                        backgroundColor: getRatingColor(data.avgRating),
-                                        animationDelay: `${index * 0.1}s`,
-                                      }}
-                                    >
+                                    <div className="bar-fill"
+                                      style={{ height: `${(data.avgRating / maxRating) * 100}%`, backgroundColor: getRatingColor(data.avgRating), animationDelay: `${index * 0.1}s` }}>
                                       <span className="bar-value">{data.avgRating}</span>
                                     </div>
                                   </div>
@@ -1256,9 +985,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                             </div>
                           </div>
                         </div>
-                        <div className="x-axis">
-                          <div className="x-axis-label">Departments</div>
-                        </div>
+                        <div className="x-axis"><div className="x-axis-label">Departments</div></div>
                       </div>
                     </div>
                   );
@@ -1275,12 +1002,8 @@ const openAdminSuggestionsView = async (college, dept) => {
                         <div className="pie-card-header">
                           <h4>{college} College</h4>
                           <div className="pie-card-summary">
-                            <span className="pie-summary-item">
-                              👥 {collegeStats.totalFaculty} Faculty
-                            </span>
-                            <span className="pie-summary-item">
-                              ⭐ {collegeStats.avgRating}/10 Avg
-                            </span>
+                            <span className="pie-summary-item">👥 {collegeStats.totalFaculty} Faculty</span>
+                            <span className="pie-summary-item">⭐ {collegeStats.avgRating}/10 Avg</span>
                           </div>
                         </div>
                         <div className="pie-chart-visual">
@@ -1293,10 +1016,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                             { label: 'Needs Improvement', color: '#ef4444', emoji: '📉' },
                           ].map((category) => {
                             const count = collegeStats.distribution[category.label] || 0;
-                            const percentage =
-                              collegeStats.totalFaculty > 0
-                                ? ((count / collegeStats.totalFaculty) * 100).toFixed(1)
-                                : 0;
+                            const percentage = collegeStats.totalFaculty > 0 ? ((count / collegeStats.totalFaculty) * 100).toFixed(1) : 0;
                             return (
                               <div key={category.label} className="pie-segment-item">
                                 <div className="pie-segment-header">
@@ -1304,13 +1024,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                                   <span className="pie-label">{category.label}</span>
                                 </div>
                                 <div className="pie-bar-container">
-                                  <div
-                                    className="pie-bar-fill"
-                                    style={{
-                                      width: `${percentage}%`,
-                                      backgroundColor: category.color,
-                                    }}
-                                  />
+                                  <div className="pie-bar-fill" style={{ width: `${percentage}%`, backgroundColor: category.color }} />
                                 </div>
                                 <div className="pie-segment-stats">
                                   <span>{count} faculty</span>
@@ -1320,9 +1034,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                             );
                           })}
                         </div>
-                        <div className="pie-card-footer">
-                          📝 Total Responses: {collegeStats.totalResponses}
-                        </div>
+                        <div className="pie-card-footer">📝 Total Responses: {collegeStats.totalResponses}</div>
                       </div>
                     );
                   })}
@@ -1340,13 +1052,10 @@ const openAdminSuggestionsView = async (college, dept) => {
               <div className="card-header-master">
                 <div>
                   <h2>{selectedDepartment} Department</h2>
-                  {selectedSubDept && (
-                    <p className="subdept-subtitle">Managing: {selectedSubDept}</p>
-                  )}
+                  {selectedSubDept && <p className="subdept-subtitle">Managing: {selectedSubDept}</p>}
                 </div>
                 <span className="college-badge-master">{selectedCollege} College</span>
               </div>
-
               <div className="year-sections">
                 {Object.entries(groupedFaculty).map(([key, faculties]) => (
                   <div key={key} className="year-section">
@@ -1361,7 +1070,14 @@ const openAdminSuggestionsView = async (college, dept) => {
                           <p>No faculty found</p>
                         </div>
                       ) : (
-                        faculties.map(renderFacultyCard)
+                        faculties.map((faculty) => (
+                          <FacultyCard
+                            key={faculty.id}
+                            faculty={faculty}
+                            onOpen={openFacultyModal}
+                            onRemove={removeFaculty}
+                          />
+                        ))
                       )}
                     </div>
                   </div>
@@ -1381,17 +1097,11 @@ const openAdminSuggestionsView = async (college, dept) => {
                 <h2>{selectedFaculty.name}</h2>
                 <span className="modal-dept-badge">{selectedFaculty.dept}</span>
               </div>
-              <button className="modal-close-btn" onClick={() => setShowFacultyModal(false)}>
-                ✕
-              </button>
+              <button className="modal-close-btn" onClick={() => setShowFacultyModal(false)}>✕</button>
             </div>
 
             <div className="modal-body-custom">
               <div className="faculty-info-grid">
-                <div className="info-item">
-                  <span className="info-label">Code</span>
-                  <span className="info-value">{selectedFaculty.code}</span>
-                </div>
                 <div className="info-item">
                   <span className="info-label">Subject</span>
                   <span className="info-value">{selectedFaculty.subject}</span>
@@ -1414,98 +1124,33 @@ const openAdminSuggestionsView = async (college, dept) => {
                 </div>
               </div>
 
-              <div
-                style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}
-              >
-                <button
+              <div className="modal-action-bar">
+                <button className="mab-btn mab-btn--pdf"
                   onClick={() => {
                     if (!selectedFaculty.statistics || !selectedFaculty.hasFeedback) {
-                      alert('⚠️ No feedback data available for PDF.');
-                      return;
+                      showToast('No feedback data available for PDF.'); return;
                     }
                     generateFacultyPDF(selectedFaculty, selectedFaculty.statistics, selectedFaculty.college);
-                  }}
-                  style={{
-                    padding: '8px 16px',
-                    background: 'linear-gradient(135deg,#ef4444,#dc2626)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '10px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                  }}
-                >
+                  }}>
                   📄 Download PDF
                 </button>
-                <button
+                <button className="mab-btn mab-btn--excel"
                   onClick={async () => {
                     if (!selectedFaculty.statistics || !selectedFaculty.hasFeedback) {
-                      alert('⚠️ No feedback data available for Excel.');
-                      return;
+                      showToast('No feedback data available for Excel.'); return;
                     }
                     let rawData = [];
-                    try {
-                      rawData = await dataService.getFacultyReportData(selectedFaculty.id);
-                    } catch (e) {
-                      console.warn('Raw data unavailable');
-                    }
+                    try { rawData = await dataService.getFacultyReportData(selectedFaculty.id); } catch (e) { /* skip */ }
                     generateFacultyExcel(selectedFaculty, rawData, selectedFaculty.statistics);
-                  }}
-                  style={{
-                    padding: '8px 16px',
-                    background: 'linear-gradient(135deg,#10b981,#059669)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '10px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                  }}
-                >
+                  }}>
                   📊 Download Excel
                 </button>
-                <button
-                  onClick={() =>
-                    handleDeleteResponses(
-                      'faculty',
-                      selectedFaculty.college,
-                      selectedFaculty.dept,
-                      selectedFaculty
-                    )
-                  }
-                  style={{
-                    padding: '8px 16px',
-                    background: 'linear-gradient(135deg,#f59e0b,#d97706)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '10px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                  }}
-                >
+                <button className="mab-btn mab-btn--delete"
+                  onClick={() => handleDeleteResponses('faculty', selectedFaculty.college, selectedFaculty.dept, selectedFaculty)}>
                   🗑️ Delete Responses
                 </button>
-                <button
-                  onClick={() =>
-                    openSuggestionModal(
-                      selectedFaculty.college,
-                      selectedFaculty.dept,
-                      selectedFaculty.name
-                    )
-                  }
-                  style={{
-                    padding: '8px 16px',
-                    background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '10px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                  }}
-                >
+                <button className="mab-btn mab-btn--suggest"
+                  onClick={() => openSuggestionModal(selectedFaculty.college, selectedFaculty.dept, selectedFaculty.name)}>
                   💡 AI Suggestions
                 </button>
               </div>
@@ -1528,45 +1173,27 @@ const openAdminSuggestionsView = async (college, dept) => {
                       <div key={key} className="slot-stats-section">
                         <h4 className="slot-title">
                           {label}
-                          {key === 'slot2' &&
-                            selectedFaculty.statistics.hasSlot1 &&
-                            (() => {
-                              const prev = parseFloat(
-                                selectedFaculty.statistics.slot1.overallAverage
-                              );
-                              const latest = parseFloat(slotData.overallAverage);
-                              const diff = (latest - prev).toFixed(2);
-                              return (
-                                <span
-                                  style={{
-                                    marginLeft: '12px',
-                                    padding: '4px 12px',
-                                    borderRadius: '8px',
-                                    fontSize: '13px',
-                                    fontWeight: '700',
-                                    background:
-                                      diff > 0
-                                        ? 'rgba(16,185,129,0.15)'
-                                        : diff < 0
-                                        ? 'rgba(239,68,68,0.15)'
-                                        : 'rgba(245,158,11,0.15)',
-                                    color:
-                                      diff > 0 ? '#10b981' : diff < 0 ? '#ef4444' : '#f59e0b',
-                                  }}
-                                >
-                                  {diff > 0 ? `↑ +${diff}` : diff < 0 ? `↓ ${diff}` : '→ No Change'}{' '}
-                                  from Previous
-                                </span>
-                              );
-                            })()}
+                          {key === 'slot2' && selectedFaculty.statistics.hasSlot1 && (() => {
+                            const prev = parseFloat(selectedFaculty.statistics.slot1.overallAverage);
+                            const latest = parseFloat(slotData.overallAverage);
+                            const diff = (latest - prev).toFixed(2);
+                            return (
+                              <span style={{
+                                marginLeft: '12px', padding: '4px 12px', borderRadius: '8px',
+                                fontSize: '13px', fontWeight: '700',
+                                background: diff > 0 ? 'rgba(16,185,129,0.15)' : diff < 0 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
+                                color: diff > 0 ? '#10b981' : diff < 0 ? '#ef4444' : '#f59e0b',
+                              }}>
+                                {diff > 0 ? `↑ +${diff}` : diff < 0 ? `↓ ${diff}` : '→ No Change'} from Previous
+                              </span>
+                            );
+                          })()}
                         </h4>
                         <div className="stats-overview">
                           <div className="stat-box">
                             <span className="stat-number">
                               {slotData.responseCount}
-                              {selectedFaculty?.batch?.totalStudents > 0
-                                ? `/${selectedFaculty.batch.totalStudents}`
-                                : ''}
+                              {selectedFaculty?.batch?.totalStudents > 0 ? `/${selectedFaculty.batch.totalStudents}` : ''}
                             </span>
                             <span className="stat-text">Responses</span>
                           </div>
@@ -1579,19 +1206,13 @@ const openAdminSuggestionsView = async (college, dept) => {
                           <h4>Rating Distribution</h4>
                           {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((rating) => {
                             const count = slotData.ratingDistribution[rating] || 0;
-                            const total = Object.values(slotData.ratingDistribution).reduce(
-                              (a, b) => a + b,
-                              0
-                            );
+                            const total = Object.values(slotData.ratingDistribution).reduce((a, b) => a + b, 0);
                             const percentage = total > 0 ? (count / total) * 100 : 0;
                             return (
                               <div key={rating} className="rating-bar-item">
                                 <span className="rating-label">⭐ {rating}</span>
                                 <div className="rating-bar-bg">
-                                  <div
-                                    className="rating-bar-fill"
-                                    style={{ width: `${percentage}%` }}
-                                  />
+                                  <div className="rating-bar-fill" style={{ width: `${percentage}%` }} />
                                 </div>
                                 <span className="rating-count">{percentage.toFixed(1)}%</span>
                               </div>
@@ -1607,10 +1228,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                               <div key={param} className="parameter-item">
                                 <span className="param-name">{param}</span>
                                 <div className="param-score-bar">
-                                  <div
-                                    className="param-score-fill"
-                                    style={{ width: `${paramStats.percentage}%` }}
-                                  />
+                                  <div className="param-score-fill" style={{ width: `${paramStats.percentage}%` }} />
                                 </div>
                                 <div className="param-scores-text">
                                   <span className="param-score">{paramStats.average}/10</span>
@@ -1633,84 +1251,62 @@ const openAdminSuggestionsView = async (college, dept) => {
                     if (topParams.length === 0 && bottomParams.length === 0) return null;
                     return (
                       <>
-                       <div className="excellence-section">
+                        <div className="excellence-section">
                           <h4 className="section-title">🌟 Areas of Excellence</h4>
                           {topParams.length === 0 ? (
                             <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters above 9.0 in this slot.</p>
                           ) : (
-                          <div className="excellence-grid">
-                            {topParams.map((item, idx) => (
-                              <div key={item.parameter} className="excellence-card">
-                                <div className="excellence-rank">#{idx + 1}</div>
-                                <div className="excellence-content">
-                                  <span className="excellence-param">{item.parameter}</span>
-                                  <div className="excellence-score">
-                                    <span className="score-value">{item.average}/10</span>
-                                    <span className="score-percentage">{item.percentage}%</span>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          )}
-                        </div>
-                        <div className="improvement-section">
-                          <h4 className="section-title">📈 Areas of Improvement</h4>
-                         {bottomParams.length === 0 ? (
-                            <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters below 8.0 — good performance across all areas.</p>
-                          ) : (
-                          <div className="improvement-grid">
-                            {bottomParams.map((item, idx) => {
-                              let isAreaOfConcern = false;
-                              if (
-                                selectedFaculty.statistics.hasSlot1 &&
-                                selectedFaculty.statistics.hasSlot2
-                              ) {
-                                const prevBottom = getBottomParameters(
-                                  selectedFaculty.statistics.slot1.parameterStats
-                                );
-                                isAreaOfConcern = prevBottom.some(
-                                  (p) => p.parameter === item.parameter
-                                );
-                              }
-                              return (
-                                <div
-                                  key={item.parameter}
-                                  className={`improvement-card ${isAreaOfConcern ? 'area-of-concern' : ''}`}
-                                  style={
-                                    isAreaOfConcern
-                                      ? { border: '2px solid #ef4444', background: 'rgba(239,68,68,0.08)' }
-                                      : {}
-                                  }
-                                >
-                                  <div className="improvement-rank">
-                                    {isAreaOfConcern ? '🚩' : `#${idx + 1}`}
-                                  </div>
-                                  <div className="improvement-content">
-                                    <div style={{ flex: 1 }}>
-                                      <span className="improvement-param">{item.parameter}</span>
-                                      {isAreaOfConcern && (
-                                        <div
-                                          style={{
-                                            fontSize: '11px',
-                                            color: '#ef4444',
-                                            fontWeight: '700',
-                                            marginTop: '4px',
-                                          }}
-                                        >
-                                          🚨 Area of Concern - Needs Urgent Action
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="improvement-score">
+                            <div className="excellence-grid">
+                              {topParams.map((item, idx) => (
+                                <div key={item.parameter} className="excellence-card">
+                                  <div className="excellence-rank">#{idx + 1}</div>
+                                  <div className="excellence-content">
+                                    <span className="excellence-param">{item.parameter}</span>
+                                    <div className="excellence-score">
                                       <span className="score-value">{item.average}/10</span>
                                       <span className="score-percentage">{item.percentage}%</span>
                                     </div>
                                   </div>
                                 </div>
-                              );
-                            })}
-                          </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="improvement-section">
+                          <h4 className="section-title">📈 Areas of Improvement</h4>
+                          {bottomParams.length === 0 ? (
+                            <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters below 8.0 — good performance across all areas.</p>
+                          ) : (
+                            <div className="improvement-grid">
+                              {bottomParams.map((item, idx) => {
+                                let isAreaOfConcern = false;
+                                if (selectedFaculty.statistics.hasSlot1 && selectedFaculty.statistics.hasSlot2) {
+                                  const prevBottom = getBottomParameters(selectedFaculty.statistics.slot1.parameterStats);
+                                  isAreaOfConcern = prevBottom.some((p) => p.parameter === item.parameter);
+                                }
+                                return (
+                                  <div key={item.parameter}
+                                    className={`improvement-card ${isAreaOfConcern ? 'area-of-concern' : ''}`}
+                                    style={isAreaOfConcern ? { border: '2px solid #ef4444', background: 'rgba(239,68,68,0.08)' } : {}}>
+                                    <div className="improvement-rank">{isAreaOfConcern ? '🚩' : `#${idx + 1}`}</div>
+                                    <div className="improvement-content">
+                                      <div style={{ flex: 1 }}>
+                                        <span className="improvement-param">{item.parameter}</span>
+                                        {isAreaOfConcern && (
+                                          <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: '700', marginTop: '4px' }}>
+                                            🚨 Area of Concern - Needs Urgent Action
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="improvement-score">
+                                        <span className="score-value">{item.average}/10</span>
+                                        <span className="score-percentage">{item.percentage}%</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
                       </>
@@ -1721,9 +1317,7 @@ const openAdminSuggestionsView = async (college, dept) => {
             </div>
 
             <div className="modal-footer-custom">
-              <button className="btn-modal-close" onClick={() => setShowFacultyModal(false)}>
-                Close
-              </button>
+              <button className="btn-modal-close" onClick={() => setShowFacultyModal(false)}>Close</button>
             </div>
           </div>
         </div>
@@ -1734,12 +1328,8 @@ const openAdminSuggestionsView = async (college, dept) => {
         <div className="modal-overlay" onClick={() => setShowAIStatsModal(false)}>
           <div className="ai-stats-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-custom">
-              <div className="modal-title-section">
-                <h2>🤖 AI Department Analytics</h2>
-              </div>
-              <button className="modal-close-btn" onClick={() => setShowAIStatsModal(false)}>
-                ✕
-              </button>
+              <div className="modal-title-section"><h2>🤖 AI Department Analytics</h2></div>
+              <button className="modal-close-btn" onClick={() => setShowAIStatsModal(false)}>✕</button>
             </div>
             <div className="modal-body-custom ai-stats-body">
               {!aiStatsData ? (
@@ -1747,32 +1337,19 @@ const openAdminSuggestionsView = async (college, dept) => {
                   <h3>Configure Analytics Report</h3>
                   <div className="config-section">
                     <label>Select Department</label>
-                    <select
-                      value={aiStatsDept}
-                      onChange={(e) => {
-                        setAiStatsDept(e.target.value);
-                        setAiStatsYear('');
-                        setAiStatsBranch('');
-                      }}
-                      className="ai-select"
-                    >
+                    <select value={aiStatsDept}
+                      onChange={(e) => { setAiStatsDept(e.target.value); setAiStatsYear(''); setAiStatsBranch(''); }}
+                      className="ai-select">
                       <option value="">Choose Department</option>
                       {Object.keys(allDepartments).map((dept) => (
-                        <option key={dept} value={dept}>
-                          {dept} ({allDepartments[dept]?.length || 0} Faculty)
-                        </option>
+                        <option key={dept} value={dept}>{dept} ({allDepartments[dept]?.length || 0} Faculty)</option>
                       ))}
                     </select>
                   </div>
-
                   {aiStatsDept && (
                     <div className="config-section">
                       <label>Filter by Year</label>
-                      <select
-                        value={aiStatsYear}
-                        onChange={(e) => setAiStatsYear(e.target.value)}
-                        className="ai-select"
-                      >
+                      <select value={aiStatsYear} onChange={(e) => setAiStatsYear(e.target.value)} className="ai-select">
                         <option value="">All Years</option>
                         <option value="I">I Year</option>
                         <option value="II">II Year</option>
@@ -1781,36 +1358,19 @@ const openAdminSuggestionsView = async (college, dept) => {
                       </select>
                     </div>
                   )}
-
-                 
                   <div className="config-section">
                     <label>Semester Comparison</label>
                     <div className="semester-options">
                       {['current', 'previous', 'both'].map((s) => (
-                        <button
-                          key={s}
-                          className={`semester-btn ${selectedSemester === s ? 'active' : ''}`}
-                          onClick={() => setSelectedSemester(s)}
-                        >
+                        <button key={s} className={`semester-btn ${selectedSemester === s ? 'active' : ''}`}
+                          onClick={() => setSelectedSemester(s)}>
                           {s === 'current' ? 'Current' : s === 'previous' ? 'Previous' : 'Both'}
                         </button>
                       ))}
                     </div>
                   </div>
-                  <button
-                    className="btn-generate-stats"
-                    onClick={generateAIStatistics}
-                    disabled={isGeneratingReport}
-                  >
-                    {isGeneratingReport ? (
-                      <>
-                        <span className="spinner-small" /> Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <span>🚀</span> Generate AI Report
-                      </>
-                    )}
+                  <button className="btn-generate-stats" onClick={generateAIStatistics} disabled={isGeneratingReport}>
+                    {isGeneratingReport ? <><span className="spinner-small" /> Analyzing...</> : <><span>🚀</span> Generate AI Report</>}
                   </button>
                 </div>
               ) : (
@@ -1820,9 +1380,7 @@ const openAdminSuggestionsView = async (college, dept) => {
                       <span className="no-data-icon">📊</span>
                       <h3>No Feedback Data Available</h3>
                       <p>{aiStatsData.message}</p>
-                      <button className="btn-back-config" onClick={() => setAiStatsData(null)}>
-                        ← Back
-                      </button>
+                      <button className="btn-back-config" onClick={() => setAiStatsData(null)}>← Back</button>
                     </div>
                   ) : (
                     <>
@@ -1830,51 +1388,34 @@ const openAdminSuggestionsView = async (college, dept) => {
                         <div className="report-title-section">
                           <h2>{aiStatsData.department} Department</h2>
                           {aiStatsData.filters && (
-                            <p
-                              style={{
-                                margin: '4px 0',
-                                fontSize: '13px',
-                                color: '#64748b',
-                                fontWeight: '600',
-                              }}
-                            >
+                            <p style={{ margin: '4px 0', fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
                               📌 Year: {aiStatsData.filters.year} | Branch: {aiStatsData.filters.branch}
                             </p>
                           )}
-                          <span className="report-timestamp">
-                            Generated: {aiStatsData.generatedAt}
-                          </span>
+                          <span className="report-timestamp">Generated: {aiStatsData.generatedAt}</span>
                         </div>
-                        <button className="btn-back-config" onClick={() => setAiStatsData(null)}>
-                          ← Back
-                        </button>
+                        <button className="btn-back-config" onClick={() => setAiStatsData(null)}>← Back</button>
                       </div>
 
                       <div className="overall-stats-grid">
                         <div className="stat-card-ai">
                           <span className="stat-icon-ai">⭐</span>
                           <div className="stat-content-ai">
-                            <span className="stat-value-ai">
-                              {aiStatsData.overall.avgCurrentRating}
-                            </span>
+                            <span className="stat-value-ai">{aiStatsData.overall.avgCurrentRating}</span>
                             <span className="stat-label-ai">Average Rating</span>
                           </div>
                         </div>
                         <div className="stat-card-ai">
                           <span className="stat-icon-ai">👥</span>
                           <div className="stat-content-ai">
-                            <span className="stat-value-ai">
-                              {aiStatsData.overall.uniqueStudentResponses}
-                            </span>
+                            <span className="stat-value-ai">{aiStatsData.overall.uniqueStudentResponses}</span>
                             <span className="stat-label-ai">Total Responses</span>
                           </div>
                         </div>
                         <div className="stat-card-ai">
                           <span className="stat-icon-ai">🎯</span>
                           <div className="stat-content-ai">
-                            <span className="stat-value-ai">
-                              {getPerformanceLabel(aiStatsData.overall.avgCurrentRating)}
-                            </span>
+                            <span className="stat-value-ai">{getPerformanceLabel(aiStatsData.overall.avgCurrentRating)}</span>
                             <span className="stat-label-ai">Performance Level</span>
                           </div>
                         </div>
@@ -1890,11 +1431,9 @@ const openAdminSuggestionsView = async (college, dept) => {
                           <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '8px' }}>
                             {aiStatsData.topPerformers.map((faculty, idx) => (
                               <div key={faculty.id} style={{ minWidth: '200px', maxWidth: '220px', flexShrink: 0, padding: '16px', borderRadius: '14px', background: 'linear-gradient(135deg,#ecfdf5,#d1fae5)', border: '2px solid #10b981', textAlign: 'center' }}>
-                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#10b981', color: 'white', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-                                  {idx + 1}
-                                </div>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#10b981', color: 'white', fontWeight: '800', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>{idx + 1}</div>
                                 <div style={{ fontWeight: '800', fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>{faculty.name}</div>
-                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px' }}>{faculty.subject} ({faculty.code})</div>
+                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px' }}>{faculty.subject}</div>
                                 <div style={{ fontSize: '22px', fontWeight: '900', color: '#10b981' }}>{faculty.currentRating.toFixed(2)}</div>
                                 <div style={{ fontSize: '11px', color: '#15803d', fontWeight: '700' }}>out of 10</div>
                                 <div style={{ marginTop: '8px', height: '6px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
@@ -1917,10 +1456,10 @@ const openAdminSuggestionsView = async (college, dept) => {
                             {aiStatsData.needsImprovement.map((faculty) => (
                               <div key={faculty.id} style={{ minWidth: '220px', maxWidth: '240px', flexShrink: 0, padding: '16px', borderRadius: '14px', background: 'linear-gradient(135deg,#fef2f2,#fee2e2)', border: '2px solid #ef4444' }}>
                                 <div style={{ fontWeight: '800', fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>{faculty.name}</div>
-                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>{faculty.subject} ({faculty.code})</div>
+                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>{faculty.subject}</div>
                                 <div style={{ fontSize: '22px', fontWeight: '900', color: '#ef4444' }}>{faculty.currentRating.toFixed(2)}</div>
                                 <div style={{ fontSize: '11px', color: '#b91c1c', fontWeight: '700', marginBottom: '10px' }}>out of 10</div>
-                                <div style={{ marginTop: '4px', height: '6px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
+                                <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
                                   <div style={{ height: '100%', width: `${(faculty.currentRating / 10) * 100}%`, background: '#ef4444', borderRadius: '4px' }} />
                                 </div>
                                 {faculty.lowestParams && faculty.lowestParams.length > 0 && (
@@ -1951,56 +1490,71 @@ const openAdminSuggestionsView = async (college, dept) => {
       {/* ===== ADD DEPT MODAL ===== */}
       {showAddDeptModal && (
         <div className="modal-overlay" onClick={() => setShowAddDeptModal(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px', width: '90%', padding: '24px', borderRadius: '16px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="modal-content" style={{ maxWidth: '500px', width: '90%', padding: '24px', borderRadius: '16px' }}
+            onClick={(e) => e.stopPropagation()}>
             <h2 style={{ margin: '0 0 20px 0' }}>➕ Add New Department</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label className="sidebar-label">Select College</label>
-                <select
-                  className="sidebar-select"
+                <select className="sidebar-select"
                   value={isPrincipal ? 'Gandhi' : newDeptCollege}
                   onChange={(e) => !isPrincipal && setNewDeptCollege(e.target.value)}
-                  disabled={isPrincipal}
-                >
+                  disabled={isPrincipal}>
                   <option value="">Choose College</option>
-                  {Object.keys(colleges).map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                  {Object.keys(colleges).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>
                 <label className="sidebar-label">Department Name</label>
-                <input
-                  type="text"
-                  className="sidebar-select"
-                  value={newDeptName}
-                  onChange={(e) => setNewDeptName(e.target.value)}
-                  placeholder="Enter Dept Code"
-                />
+                <input type="text" className="sidebar-select" value={newDeptName}
+                  onChange={(e) => setNewDeptName(e.target.value)} placeholder="e.g. CSE, ECE, MBA" />
               </div>
               <div>
                 <label className="sidebar-label">Branches (Optional)</label>
-                <input
-                  type="text"
-                  className="sidebar-select"
-                  value={newDeptBranches}
-                  onChange={(e) => setNewDeptBranches(e.target.value)}
-                  placeholder="Comma separated (e.g., CSM, CSD)"
-                />
+                <input type="text" className="sidebar-select" value={newDeptBranches}
+                  onChange={(e) => setNewDeptBranches(e.target.value)} placeholder="Comma separated (e.g., CSM, CSD)" />
               </div>
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button onClick={handleAddDepartment} className="btn-ai-stats" style={{ flex: 1 }}>
-                  ✅ Save
+                <button onClick={handleAddDepartment} className="btn-ai-stats" style={{ flex: 1 }}>✅ Save</button>
+                <button onClick={() => setShowAddDeptModal(false)} className="btn-ai-stats" style={{ flex: 1, background: '#64748b' }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== MERGE MODAL ===== */}
+      {showMergeModal && (
+        <div className="modal-overlay" onClick={() => setShowMergeModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '440px', width: '90%', padding: '28px', borderRadius: '16px' }}
+            onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ margin: '0 0 8px 0' }}>🔄 Merge Colleges</h2>
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
+              The source college will be deleted after merge. All its departments move to the target.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label className="sidebar-label">Merge FROM (will be deleted)</label>
+                <select className="sidebar-select" value={mergeSource}
+                  onChange={(e) => { setMergeSource(e.target.value); if (e.target.value === mergeTarget) setMergeTarget(''); }}>
+                  <option value="">Select source college</option>
+                  {Object.keys(deptStructure).map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="sidebar-label">Merge INTO (will be kept)</label>
+                <select className="sidebar-select" value={mergeTarget} onChange={(e) => setMergeTarget(e.target.value)}>
+                  <option value="">Select target college</option>
+                  {Object.keys(deptStructure).filter(c => c !== mergeSource).map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <button onClick={confirmMerge} className="btn-ai-stats"
+                  style={{ flex: 1, background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}>
+                  🔄 Confirm Merge
                 </button>
-                <button
-                  onClick={() => setShowAddDeptModal(false)}
-                  className="btn-ai-stats"
-                  style={{ flex: 1, background: '#64748b' }}
-                >
+                <button onClick={() => setShowMergeModal(false)} className="btn-ai-stats"
+                  style={{ flex: 1, background: '#64748b' }}>
                   Cancel
                 </button>
               </div>
@@ -2012,134 +1566,57 @@ const openAdminSuggestionsView = async (college, dept) => {
       {/* ===== COMPARISON MODAL ===== */}
       {showComparisonModal && (
         <div className="modal-overlay" onClick={() => setShowComparisonModal(false)}>
-          <div
-            className="modal-content"
-            style={{
-              maxWidth: '900px',
-              width: '95%',
-              maxHeight: '80vh',
-              display: 'flex',
-              flexDirection: 'column',
-              padding: 0,
-              overflow: 'hidden',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="modal-content"
+            style={{ maxWidth: '900px', width: '95%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}
+            onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-custom">
-              <div className="modal-title-section">
-                <h2>📊 Semester Comparison Tool</h2>
-              </div>
-              <button className="modal-close-btn" onClick={() => setShowComparisonModal(false)}>
-                ✕
-              </button>
+              <div className="modal-title-section"><h2>📊 Semester Comparison Tool</h2></div>
+              <button className="modal-close-btn" onClick={() => setShowComparisonModal(false)}>✕</button>
             </div>
             <div className="modal-body-custom" style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
               <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
-                <select
-                  className="sidebar-select"
-                  value={comparisonCollege}
-                  onChange={(e) => {
-                    setComparisonCollege(e.target.value);
-                    setComparisonDept('');
-                  }}
-                >
+                <select className="sidebar-select" value={comparisonCollege}
+                  onChange={(e) => { setComparisonCollege(e.target.value); setComparisonDept(''); }}>
                   <option value="">Select College</option>
-                  {Object.keys(colleges).map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                  {Object.keys(colleges).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select
-                  className="sidebar-select"
-                  value={comparisonDept}
-                  onChange={(e) => setComparisonDept(e.target.value)}
-                >
+                <select className="sidebar-select" value={comparisonDept} onChange={(e) => setComparisonDept(e.target.value)}>
                   <option value="">Select Department</option>
-                  {comparisonCollege &&
-                    deptStructure[comparisonCollege] &&
-                    Object.keys(deptStructure[comparisonCollege]).map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
+                  {comparisonCollege && deptStructure[comparisonCollege] &&
+                    Object.keys(deptStructure[comparisonCollege]).map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
-
               {comparisonCollege && comparisonDept && (() => {
                 const data = getComparisonData();
                 return (
                   <div className="comparison-table">
-                    <div
-                      className="comparison-header"
-                      style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}
-                    >
-                      <span>Faculty Name</span>
-                      <span>Slot 1 (Prev)</span>
-                      <span>Slot 2 (Curr)</span>
-                      <span>Change</span>
-                      <span>Status</span>
+                    <div className="comparison-header" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
+                      <span>Faculty Name</span><span>Slot 1 (Prev)</span>
+                      <span>Slot 2 (Curr)</span><span>Change</span><span>Status</span>
                     </div>
                     {data.length === 0 ? (
-                      <p
-                        style={{
-                          textAlign: 'center',
-                          padding: '30px',
-                          color: '#64748b',
-                          fontWeight: '600',
-                        }}
-                      >
-                        No comparison data available.
-                      </p>
-                    ) : (
-                      data.map((f) => {
-                        const change = parseFloat(f.change);
-                        return (
-                          <div
-                            key={f.id}
-                            className="comparison-row"
-                            style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}
-                          >
-                            <div>
-                              <strong>{f.name}</strong>
-                              <div style={{ fontSize: '12px', color: '#64748b' }}>{f.subject}</div>
-                            </div>
-                            <div style={{ fontWeight: 'bold', color: '#64748b' }}>
-                              {f.slot1Avg || '-'}
-                            </div>
-                            <div
-                              style={{
-                                fontWeight: 'bold',
-                                color: f.slot2Avg ? getRatingColor(parseFloat(f.slot2Avg)) : '#64748b',
-                              }}
-                            >
-                              {f.slot2Avg || '-'}
-                            </div>
-                            <div
-                              style={{
-                                fontWeight: 'bold',
-                                color:
-                                  change > 0 ? '#10b981' : change < 0 ? '#ef4444' : '#64748b',
-                              }}
-                            >
-                              {f.change ? (change > 0 ? `+${f.change}` : f.change) : '-'}
-                            </div>
-                            <div>
-                              <span
-                                style={{
-                                  padding: '4px 10px',
-                                  borderRadius: '8px',
-                                  fontSize: '11px',
-                                  fontWeight: '700',
-                                  background:
-                                    change > 0 ? '#d1fae5' : change < 0 ? '#fee2e2' : '#f3f4f6',
-                                  color:
-                                    change > 0 ? '#065f46' : change < 0 ? '#991b1b' : '#374151',
-                                }}
-                              >
-                                {change > 0 ? '↑ Improved' : change < 0 ? '↓ Declined' : '→ Stable'}
-                              </span>
-                            </div>
+                      <p style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontWeight: '600' }}>No comparison data available.</p>
+                    ) : data.map((f) => {
+                      const change = parseFloat(f.change);
+                      return (
+                        <div key={f.id} className="comparison-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
+                          <div>
+                            <strong>{f.name}</strong>
+                            <div style={{ fontSize: '12px', color: '#64748b' }}>{f.subject}</div>
                           </div>
-                        );
-                      })
-                    )}
+                          <div style={{ fontWeight: 'bold', color: '#64748b' }}>{f.slot1Avg || '-'}</div>
+                          <div style={{ fontWeight: 'bold', color: f.slot2Avg ? getRatingColor(parseFloat(f.slot2Avg)) : '#64748b' }}>{f.slot2Avg || '-'}</div>
+                          <div style={{ fontWeight: 'bold', color: change > 0 ? '#10b981' : change < 0 ? '#ef4444' : '#64748b' }}>
+                            {f.change ? (change > 0 ? `+${f.change}` : f.change) : '-'}
+                          </div>
+                          <div>
+                            <span style={{ padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', background: change > 0 ? '#d1fae5' : change < 0 ? '#fee2e2' : '#f3f4f6', color: change > 0 ? '#065f46' : change < 0 ? '#991b1b' : '#374151' }}>
+                              {change > 0 ? '↑ Improved' : change < 0 ? '↓ Declined' : '→ Stable'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })()}
@@ -2150,53 +1627,20 @@ const openAdminSuggestionsView = async (college, dept) => {
 
       {/* ===== SUGGESTION MODAL ===== */}
       {showSuggestionModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowSuggestionModal(false)}
-        >
-          <div
-            className="modal-content"
-            style={{
-              maxWidth: '850px',
-              width: '90%',
-              maxHeight: '85vh',
-              overflow: 'hidden',
-              padding: 0,
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="modal-header-custom"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
-            >
-              <div className="modal-title-section">
-                <h2 style={{ color: 'white' }}>💡 AI Suggestion Analysis</h2>
-              </div>
-              <button
-                className="modal-close-btn"
-                onClick={() => setShowSuggestionModal(false)}
-              >
-                ✕
-              </button>
+        <div className="modal-overlay" onClick={() => setShowSuggestionModal(false)}>
+          <div className="modal-content"
+            style={{ maxWidth: '850px', width: '90%', maxHeight: '85vh', overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-custom" style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}>
+              <div className="modal-title-section"><h2 style={{ color: 'white' }}>💡 AI Suggestion Analysis</h2></div>
+              <button className="modal-close-btn" onClick={() => setShowSuggestionModal(false)}>✕</button>
             </div>
-            <div
-              className="modal-body-custom"
-              style={{ padding: '20px', flex: 1, overflowY: 'auto' }}
-            >
-              {/* Show spinner until suggestionData is ready (fixes race condition) */}
+            <div className="modal-body-custom" style={{ padding: '20px', flex: 1, overflowY: 'auto' }}>
               {!suggestionData ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px' }}>
                   <div className="spinner-small" style={{ margin: '0 auto 16px auto', width: '36px', height: '36px', borderTopColor: '#7c3aed', borderWidth: '4px' }} />
                   <h3 style={{ color: '#64748b' }}>Analyzing feedback...</h3>
                   <p style={{ color: '#94a3b8', fontSize: '14px' }}>Reading ratings and comments.</p>
-                </div>
-              ) : !suggestionData ? (
-                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                  <div style={{ fontSize: '60px', marginBottom: '16px' }}>💬</div>
-                  <h3 style={{ color: '#64748b' }}>No Feedback Data Available</h3>
-                  <p style={{ color: '#94a3b8' }}>No ratings or comments submitted yet for this faculty.</p>
                 </div>
               ) : (
                 <>
@@ -2206,28 +1650,16 @@ const openAdminSuggestionsView = async (college, dept) => {
                   <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
                     Based on student ratings and {suggestionData.rawCount} comment{suggestionData.rawCount !== 1 ? 's' : ''}
                   </p>
-
-                  {/* Positives */}
                   <div style={{ marginBottom: '20px', padding: '18px 20px', borderRadius: '14px', background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '2px solid #22c55e' }}>
-                    <h4 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '800', color: '#14532d' }}>
-                      ✅ Positives
-                    </h4>
+                    <h4 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '800', color: '#14532d' }}>✅ Positives</h4>
                     <ul style={{ margin: 0, paddingLeft: '20px', color: '#1e293b', fontSize: '14px', lineHeight: '2' }}>
-                      {suggestionData.positives.map((p, i) => (
-                        <li key={i} style={{ marginBottom: '6px' }}>{p}</li>
-                      ))}
+                      {suggestionData.positives.map((p, i) => <li key={i} style={{ marginBottom: '6px' }}>{p}</li>)}
                     </ul>
                   </div>
-
-                  {/* Negatives */}
                   <div style={{ padding: '18px 20px', borderRadius: '14px', background: 'linear-gradient(135deg, #fef2f2, #fee2e2)', border: '2px solid #ef4444' }}>
-                    <h4 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '800', color: '#7f1d1d' }}>
-                      ⚠️ Areas to Improve
-                    </h4>
+                    <h4 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '800', color: '#7f1d1d' }}>⚠️ Areas to Improve</h4>
                     <ul style={{ margin: 0, paddingLeft: '20px', color: '#1e293b', fontSize: '14px', lineHeight: '2' }}>
-                      {suggestionData.negatives.map((n, i) => (
-                        <li key={i} style={{ marginBottom: '6px' }}>{n}</li>
-                      ))}
+                      {suggestionData.negatives.map((n, i) => <li key={i} style={{ marginBottom: '6px' }}>{n}</li>)}
                     </ul>
                   </div>
                 </>
@@ -2239,28 +1671,11 @@ const openAdminSuggestionsView = async (college, dept) => {
 
       {/* ===== ADMIN SUGGESTIONS VIEW MODAL ===== */}
       {showAdminSuggestionsView && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowAdminSuggestionsView(false)}
-        >
-          <div
-            className="modal-content"
-            style={{
-              maxWidth: '860px',
-              width: '92%',
-              maxHeight: '88vh',
-              overflow: 'hidden',
-              padding: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              borderRadius: '20px',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="modal-header-custom"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
-            >
+        <div className="modal-overlay" onClick={() => setShowAdminSuggestionsView(false)}>
+          <div className="modal-content"
+            style={{ maxWidth: '860px', width: '92%', maxHeight: '88vh', overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column', borderRadius: '20px' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-custom" style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}>
               <div className="modal-title-section">
                 <h2 style={{ color: 'white' }}>💡 Student Suggestions Overview</h2>
                 {adminSuggestionsData && (
@@ -2269,51 +1684,20 @@ const openAdminSuggestionsView = async (college, dept) => {
                   </span>
                 )}
               </div>
-              <button
-                className="modal-close-btn"
-                onClick={() => setShowAdminSuggestionsView(false)}
-              >
-                ✕
-              </button>
+              <button className="modal-close-btn" onClick={() => setShowAdminSuggestionsView(false)}>✕</button>
             </div>
-
-            <div
-              className="modal-body-custom"
-              style={{ padding: '24px', flex: 1, overflowY: 'auto' }}
-            >
+            <div className="modal-body-custom" style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
               {isLoadingAdminSuggestions ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                  <div
-                    className="spinner-small"
-                    style={{
-                      margin: '0 auto 16px auto',
-                      width: '40px',
-                      height: '40px',
-                      borderTopColor: '#7c3aed',
-                      borderWidth: '4px',
-                    }}
-                  />
+                  <div className="spinner-small" style={{ margin: '0 auto 16px auto', width: '40px', height: '40px', borderTopColor: '#7c3aed', borderWidth: '4px' }} />
                   <h3 style={{ color: '#64748b' }}>Analyzing student suggestions...</h3>
-                  <p style={{ color: '#94a3b8', fontSize: '14px' }}>
-                    Filtering by keywords and building summaries.
-                  </p>
+                  <p style={{ color: '#94a3b8', fontSize: '14px' }}>Filtering by keywords and building summaries.</p>
                 </div>
               ) : adminSuggestionsData ? (
                 <>
-                  {/* Faculty-wise Summaries */}
-                  <h3
-                    style={{
-                      margin: '0 0 16px 0',
-                      fontSize: '18px',
-                      fontWeight: '800',
-                      color: '#1e293b',
-                      borderBottom: '3px solid #7c3aed',
-                      paddingBottom: '10px',
-                    }}
-                  >
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '800', color: '#1e293b', borderBottom: '3px solid #7c3aed', paddingBottom: '10px' }}>
                     🧑‍🏫 Faculty-wise Summarized Suggestions
                   </h3>
-
                   {adminSuggestionsData.facultySummaries.length === 0 ? (
                     <div style={{ padding: '24px', borderRadius: '14px', background: '#f8fafc', border: '2px dashed #cbd5e1', textAlign: 'center', color: '#94a3b8', marginBottom: '28px' }}>
                       <div style={{ fontSize: '40px', marginBottom: '8px' }}>💬</div>
@@ -2323,17 +1707,12 @@ const openAdminSuggestionsView = async (college, dept) => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
                       {adminSuggestionsData.facultySummaries.map((fac, i) => (
                         <div key={i} style={{ borderRadius: '14px', border: '2px solid #e2e8f0', overflow: 'hidden' }}>
-                          {/* Faculty header */}
                           <div style={{ padding: '12px 16px', background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '6px', color: 'white', fontWeight: '800', fontSize: '13px' }}>{fac.code}</span>
                             <strong style={{ color: 'white', fontSize: '15px' }}>{fac.name}</strong>
                             {fac.subject && <span style={{ color: '#ddd8fe', fontSize: '13px', marginLeft: '4px' }}>— {fac.subject}</span>}
                           </div>
-
-                          {/* Two-column param table */}
                           {(fac.paramRankings.top3.length > 0 || fac.paramRankings.bottom3.length > 0) && (
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: '2px solid #e2e8f0' }}>
-                              {/* Positives column */}
                               <div style={{ padding: '14px 16px', borderRight: '2px solid #e2e8f0', background: '#f0fdf4' }}>
                                 <div style={{ fontSize: '12px', fontWeight: '800', color: '#15803d', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>✅ Top 3 Strengths</div>
                                 {fac.paramRankings.top3.map((p, idx) => (
@@ -2343,7 +1722,6 @@ const openAdminSuggestionsView = async (college, dept) => {
                                   </div>
                                 ))}
                               </div>
-                              {/* Negatives column */}
                               <div style={{ padding: '14px 16px', background: '#fef2f2' }}>
                                 <div style={{ fontSize: '12px', fontWeight: '800', color: '#b91c1c', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>⚠️ Top 3 Needs Improvement</div>
                                 {fac.paramRankings.bottom3.map((p, idx) => (
@@ -2355,8 +1733,6 @@ const openAdminSuggestionsView = async (college, dept) => {
                               </div>
                             </div>
                           )}
-
-                          {/* Sentence summary */}
                           {fac.suggestions && (
                             <div style={{ padding: '14px 16px', background: '#f8fafc' }}>
                               <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: '#334155', lineHeight: '1.9' }}>
@@ -2374,57 +1750,19 @@ const openAdminSuggestionsView = async (college, dept) => {
                     </div>
                   )}
 
-                  {/* Divider */}
-                  <div style={{ height: '3px', background: 'linear-gradient(90deg, #f59e0b, #eab308)', borderRadius: '4px', marginBottom: '28px'}}/>
+                  <div style={{ height: '3px', background: 'linear-gradient(90deg, #f59e0b, #eab308)', borderRadius: '4px', marginBottom: '28px' }} />
 
-                  {/* College-level Summaries */}
-                  <h3
-                    style={{
-                      margin: '0 0 16px 0',
-                      fontSize: '18px',
-                      fontWeight: '800',
-                      color: '#1e293b',
-                      borderBottom: '3px solid #f59e0b',
-                      paddingBottom: '10px',
-                    }}
-                  >
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: '800', color: '#1e293b', borderBottom: '3px solid #f59e0b', paddingBottom: '10px' }}>
                     🏫 College-level Summarized Suggestions
                   </h3>
-
                   {!adminSuggestionsData.collegeSummary ? (
-                    <div
-                      style={{
-                        padding: '24px',
-                        borderRadius: '14px',
-                        background: '#fffbeb',
-                        border: '2px dashed #fcd34d',
-                        textAlign: 'center',
-                        color: '#92400e',
-                      }}
-                    >
+                    <div style={{ padding: '24px', borderRadius: '14px', background: '#fffbeb', border: '2px dashed #fcd34d', textAlign: 'center', color: '#92400e' }}>
                       <div style={{ fontSize: '40px', marginBottom: '8px' }}>🏛️</div>
-                      <p style={{ fontWeight: '700' }}>
-                        No college-level suggestions submitted yet.
-                      </p>
+                      <p style={{ fontWeight: '700' }}>No college-level suggestions submitted yet.</p>
                     </div>
                   ) : (
-                    <div
-                      style={{
-                        padding: '20px 24px',
-                        borderRadius: '14px',
-                        background: 'linear-gradient(135deg, #fffbeb, #fef9c3)',
-                        border: '2px solid #f59e0b',
-                      }}
-                    >
-                      <ul
-                        style={{
-                          margin: 0,
-                          paddingLeft: '20px',
-                          fontSize: '14px',
-                          color: '#334155',
-                          lineHeight: '2',
-                        }}
-                      >
+                    <div style={{ padding: '20px 24px', borderRadius: '14px', background: 'linear-gradient(135deg, #fffbeb, #fef9c3)', border: '2px solid #f59e0b' }}>
+                      <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', color: '#334155', lineHeight: '2' }}>
                         <li style={{ marginBottom: '10px' }}>
                           <strong style={{ color: '#16a34a' }}>✅ Positive Feedback: </strong>
                           {adminSuggestionsData.collegeSummary.bullet1}
@@ -2446,71 +1784,30 @@ const openAdminSuggestionsView = async (college, dept) => {
       {/* ===== DELETE MODAL ===== */}
       {showDeleteModal && (
         <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
-          <div
-            className="modal-content"
-            style={{
-              maxWidth: '420px',
-              padding: '32px',
-              textAlign: 'center',
-              borderRadius: '20px',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="modal-content"
+            style={{ maxWidth: '420px', padding: '32px', textAlign: 'center', borderRadius: '20px' }}
+            onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: '56px', marginBottom: '16px' }}>🗑️</div>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: '800' }}>
-              Delete Responses?
-            </h3>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: '800' }}>Delete Responses?</h3>
             <p style={{ color: '#64748b', marginBottom: '24px', fontSize: '14px' }}>
               Are you sure you want to delete responses for{' '}
               <strong>
-                {deleteTarget.faculty
-                  ? deleteTarget.faculty.name
-                  : deleteTarget.dept
-                  ? `${deleteTarget.dept} Dept`
-                  : `${deleteTarget.college} College`}
-              </strong>
-              ?
+                {deleteTarget.faculty ? deleteTarget.faculty.name : deleteTarget.dept ? `${deleteTarget.dept} Dept` : `${deleteTarget.college} College`}
+              </strong>?
               <br />
-              <span style={{ fontSize: '12px', color: '#ef4444' }}>
-                This action cannot be undone.
-              </span>
+              <span style={{ fontSize: '12px', color: '#ef4444' }}>This action cannot be undone.</span>
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button
-                onClick={() => confirmDeleteResponses(true)}
-                className="btn-ai-stats"
-                style={{
-                  background: 'linear-gradient(135deg, #10b981, #059669)',
-                  width: '100%',
-                  justifyContent: 'center',
-                }}
-              >
+              <button onClick={() => confirmDeleteResponses(true)} className="btn-ai-stats"
+                style={{ background: 'linear-gradient(135deg, #10b981, #059669)', width: '100%', justifyContent: 'center' }}>
                 📥 Download First, Then Delete
               </button>
-              <button
-                onClick={() => confirmDeleteResponses(false)}
-                className="btn-ai-stats"
-                style={{
-                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                  width: '100%',
-                  justifyContent: 'center',
-                }}
-              >
+              <button onClick={() => confirmDeleteResponses(false)} className="btn-ai-stats"
+                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', width: '100%', justifyContent: 'center' }}>
                 🗑️ Delete Without Downloading
               </button>
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                style={{
-                  background: 'transparent',
-                  border: '2px solid #e2e8f0',
-                  borderRadius: '12px',
-                  color: '#64748b',
-                  cursor: 'pointer',
-                  padding: '10px',
-                  fontWeight: '700',
-                  fontSize: '14px',
-                }}
-              >
+              <button onClick={() => setShowDeleteModal(false)}
+                style={{ background: 'transparent', border: '2px solid #e2e8f0', borderRadius: '12px', color: '#64748b', cursor: 'pointer', padding: '10px', fontWeight: '700', fontSize: '14px' }}>
                 Cancel
               </button>
             </div>
