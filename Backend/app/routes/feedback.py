@@ -93,22 +93,14 @@ def submit_feedback():
             client_ip.split(',')[0].strip()
         )
 
-    is_dev = os.getenv(
-        'FLASK_ENV', 'production'
-    ) == 'development'
-
-    if not is_dev:
-        existing = (
-            FeedbackSubmission.query.filter_by(
-                batch_db_id=batch.id,
-                ip_address=client_ip,
-            ).first()
-        )
-        if existing:
+    # Cap submissions to section strength — applies in all environments
+    if batch.total_students and batch.total_students > 0:
+        submission_count = FeedbackSubmission.query.filter_by(
+            batch_db_id=batch.id,
+        ).count()
+        if submission_count >= batch.total_students:
             return jsonify({
-                "error":
-                    "Feedback already submitted "
-                    "from this device.",
+                "error": f"This section has reached its maximum response limit ({batch.total_students}).",
             }), 409
 
     submission = FeedbackSubmission(
@@ -256,6 +248,85 @@ def get_faculty_stats(faculty_id):
         set(r.submission_id for r in ratings)
     )
 
+    return jsonify({
+        "stats": {
+            "totalResponses": total_submissions,
+            "hasSlot1": 'slot1' in result,
+            "hasSlot2": 'slot2' in result,
+            **result,
+        }
+    }), 200
+
+@feedback_bp.route(
+    '/faculty/stats/multi', methods=['POST']
+)
+@require_role(['hod', 'admin'])
+def get_multi_faculty_stats():
+    """
+    Aggregate stats across multiple faculty IDs — same person, same subject,
+    multiple sections. Pools all individual ratings for correct averages.
+    """
+    user = g.current_user
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    faculty_ids = data.get('faculty_ids', [])
+    if not faculty_ids:
+        return jsonify({"error": "faculty_ids list is required"}), 400
+
+    # HoD access check — must own all faculty records
+    if user.role == 'hod':
+        for fid in faculty_ids:
+            f = Faculty.query.get(fid)
+            if f and (f.college != user.college or f.department != user.department):
+                return jsonify({"error": "Access denied"}), 403
+
+    ratings = FeedbackRating.query.filter(
+        FeedbackRating.faculty_id.in_(faculty_ids)
+    ).all()
+
+    if not ratings:
+        return jsonify({"stats": None, "message": "No feedback data"}), 200
+
+    slot_data = {}
+    for r in ratings:
+        slot = r.submission.slot if r.submission else 1
+        if slot not in slot_data:
+            slot_data[slot] = {}
+        if r.parameter not in slot_data[slot]:
+            slot_data[slot][r.parameter] = []
+        slot_data[slot][r.parameter].append(r.rating)
+
+    result = {}
+    for slot, params in slot_data.items():
+        param_stats = {}
+        all_ratings = []
+        for param, vals in params.items():
+            avg = sum(vals) / len(vals)
+            param_stats[param] = {
+                'average': round(avg, 2),
+                'percentage': round((avg / 10) * 100, 1),
+                'totalRatings': len(vals),
+            }
+            all_ratings.extend(vals)
+
+        overall = sum(all_ratings) / len(all_ratings) if all_ratings else 0
+        dist = {str(i): 0 for i in range(1, 11)}
+        for r_val in all_ratings:
+            dist[str(r_val)] = dist.get(str(r_val), 0) + 1
+
+        result[f'slot{slot}'] = {
+            'parameterStats': param_stats,
+            'overallAverage': round(overall, 2),
+            'ratingDistribution': dist,
+            'responseCount': len(set(
+                r.submission_id for r in ratings
+                if r.submission and r.submission.slot == slot
+            )),
+        }
+
+    total_submissions = len(set(r.submission_id for r in ratings))
     return jsonify({
         "stats": {
             "totalResponses": total_submissions,

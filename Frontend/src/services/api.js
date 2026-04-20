@@ -9,7 +9,7 @@ if (!API_BASE_URL) {
 const api = axios.create({
   baseURL: API_BASE_URL || '',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 30000,
+  timeout: 20000,
   // FIX (CRITICAL): Send httpOnly refresh cookie on cross-origin requests.
   withCredentials: true,
 });
@@ -96,7 +96,7 @@ api.interceptors.response.use(
         const { data } = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
-          { withCredentials: true, timeout: 10000 },
+          { withCredentials: true, timeout: 8000 },
         );
 
         const newAccessToken = data.access_token;
@@ -154,6 +154,7 @@ export const sectionAPI = {
 export const feedbackAPI = {
   submit: (data) => api.post('/feedback/submit', data),
   getFacultyStats: (facultyId) => api.get(`/feedback/faculty/${facultyId}/stats`),
+  getMultiFacultyStats: (facultyIds) => api.post('/feedback/faculty/stats/multi', { faculty_ids: facultyIds }),
   deleteFacultyResponses: (facultyId) => api.delete(`/feedback/faculty/${facultyId}/responses`),
   deleteDepartmentResponses: (college, dept) =>
     api.delete('/feedback/department/responses', { data: { college, dept } }),

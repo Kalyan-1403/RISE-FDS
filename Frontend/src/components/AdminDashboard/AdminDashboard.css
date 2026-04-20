@@ -1597,16 +1597,33 @@
 }
 @media (max-width: 768px) {
   .dashboard-header { flex-direction: column; align-items: flex-start; padding: 12px; }
-  .header-right { width: 100%; overflow-x: auto; padding-bottom: 4px; }
+  .header-right { width: 100%; overflow-x: auto; padding-bottom: 4px; flex-wrap: wrap; gap: 6px; }
   .btn-ai-stats { font-size: 12px; padding: 6px 10px; white-space: nowrap; }
-  .modal-content, .ai-stats-modal { width: 98% !important; max-width: 98% !important; max-height: 95vh !important; }
+  .modal-content, .ai-stats-modal, .faculty-detail-modal { width: 98% !important; max-width: 98% !important; max-height: 95vh !important; }
   .overall-stats-grid { grid-template-columns: 1fr 1fr !important; }
   .performers-grid { grid-template-columns: 1fr !important; }
   .faculty-cards-grid { grid-template-columns: 1fr !important; }
   .analytics-grid { grid-template-columns: 1fr !important; }
-  .parameter-item { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .parameter-item { grid-template-columns: 1fr; gap: 4px; }
   .param-score-bar { width: 100%; }
   .stats-overview { grid-template-columns: 1fr 1fr !important; }
+  /* Faculty list table on mobile */
+  .flm-header { grid-template-columns: 2fr 2fr 60px 48px; }
+  .flm-header span:nth-child(3) { display: none; }
+  .flm-row { grid-template-columns: 2fr 2fr 60px 48px; }
+  .flm-row .flr-meta:first-of-type { display: none; }
+  .year-section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .btn-year-stats { width: 100%; text-align: center; }
+  /* Faculty modal action bar */
+  .modal-action-bar { flex-direction: column; }
+  .mab-btn { width: 100%; text-align: center; }
+  /* Subject report header on mobile */
+  .sr-subject-header { flex-direction: column; gap: 8px; }
+  .sr-resp-badge { align-self: flex-start; }
+  /* Stats modal */
+  .ys-table { font-size: 11px; }
+  .ys-table th, .ys-tr td { padding: 7px 8px; }
+  .hod-toast { right: 8px; left: 8px; max-width: none; }
 }
 @media (max-width: 480px) {
   .dashboard-header h2 { font-size: 15px; }
@@ -1614,6 +1631,13 @@
   .excellence-grid, .improvement-grid { grid-template-columns: 1fr !important; }
   .report-header { flex-direction: column; gap: 8px; }
   .modal-header-custom h2 { font-size: 16px; }
+  .flm-header { grid-template-columns: 1fr 1fr 48px; }
+  .flm-header span:nth-child(2), .flm-header span:nth-child(3) { display: none; }
+  .flm-row { grid-template-columns: 1fr 1fr 48px; }
+  .flm-row .flr-subject { display: none; }
+  .flm-row .flr-meta:first-of-type { display: none; }
+  .sr-subject-name { font-size: 14px; }
+  .faculty-info-grid { grid-template-columns: 1fr !important; }
 }
 /* ── Toast (matches HoDDashboard) ── */
 .hod-toast {
@@ -1838,3 +1862,42 @@
 .ys-perf-sub   { font-size: 11px; color: #94a3b8; margin-top: 3px; margin-bottom: 8px; font-weight: 600; }
 .ys-bar { height: 5px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
 .ys-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+
+/* ── Subject-per-report layout in faculty modal ── */
+.sr-subject-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  margin-bottom: 14px;
+  gap: 12px;
+}
+.sr-subject-left { display: flex; flex-direction: column; gap: 4px; }
+.sr-subject-name {
+  font-size: 16px; font-weight: 900; color: white;
+}
+.sr-subject-meta {
+  font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.8);
+}
+.sr-resp-badge {
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 20px;
+  font-size: 12px; font-weight: 800; color: white;
+  white-space: nowrap; flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+.sr-divider {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+  margin: 28px 0;
+  border-radius: 2px;
+}
+.sr-no-data {
+  text-align: center; padding: 24px;
+  color: #94a3b8; font-size: 13px; font-weight: 600;
+  background: #f8fafc; border-radius: 10px;
+  border: 2px dashed #e2e8f0; margin-bottom: 14px;
+}

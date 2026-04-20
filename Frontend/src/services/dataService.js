@@ -363,6 +363,16 @@ const getFacultyStats = async (facultyId) => {
   }
 };
 
+const getMultiFacultyStats = async (facultyIds) => {
+  try {
+    const r = await feedbackAPI.getMultiFacultyStats(facultyIds);
+    setBackendStatus(true);
+    return r.data.stats;
+  } catch (e) {
+    setBackendStatus(false);
+    return null;
+  }
+};
 // DELETE RESPONSES — via BACKEND
 const deleteFacultyFeedback = async (
   facultyId
@@ -495,6 +505,7 @@ const dataService = {
   listBatches,
   submitFeedback,
   getFacultyStats,
+  getMultiFacultyStats,
   deleteFacultyFeedback,
   deleteDepartmentFeedback,
   deleteCollegeFeedback,

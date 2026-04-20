@@ -208,6 +208,145 @@ function getBottomParameters(parameterStats) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SLOT STATS RENDERER — pure function, no hooks, used in modal
+// ─────────────────────────────────────────────────────────────
+function renderSlotStats(statistics) {
+  if (!statistics) return null;
+  return (
+    <>
+      {[
+        { key: 'slot1', label: '📋 Previous Feedback Cycle', has: statistics.hasSlot1 },
+        { key: 'slot2', label: '📋 Latest Feedback Cycle',   has: statistics.hasSlot2 },
+      ].map(({ key, label, has }) => {
+        if (!has) return null;
+        const slotData = statistics[key];
+        return (
+          <div key={key} className="slot-stats-section">
+            <h4 className="slot-title">
+              {label}
+              {key === 'slot2' && statistics.hasSlot1 && (() => {
+                const diff = (parseFloat(slotData.overallAverage) - parseFloat(statistics.slot1.overallAverage)).toFixed(2);
+                return (
+                  <span style={{
+                    marginLeft: '12px', padding: '4px 12px', borderRadius: '8px',
+                    fontSize: '13px', fontWeight: '700',
+                    background: diff > 0 ? 'rgba(16,185,129,0.15)' : diff < 0 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
+                    color: diff > 0 ? '#10b981' : diff < 0 ? '#ef4444' : '#f59e0b',
+                  }}>
+                    {diff > 0 ? `↑ +${diff}` : diff < 0 ? `↓ ${diff}` : '→ No Change'} from Previous
+                  </span>
+                );
+              })()}
+            </h4>
+            <div className="stats-overview">
+              <div className="stat-box">
+                <span className="stat-number">{slotData.responseCount}</span>
+                <span className="stat-text">Responses</span>
+              </div>
+              <div className="stat-box highlight">
+                <span className="stat-number">{slotData.overallAverage}</span>
+                <span className="stat-text">Average Rating</span>
+              </div>
+            </div>
+            <div className="rating-distribution">
+              <h4>Rating Distribution</h4>
+              {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((rating) => {
+                const count = slotData.ratingDistribution[rating] || 0;
+                const total = Object.values(slotData.ratingDistribution).reduce((a, b) => a + b, 0);
+                const pct = total > 0 ? (count / total) * 100 : 0;
+                return (
+                  <div key={rating} className="rating-bar-item">
+                    <span className="rating-label">⭐ {rating}</span>
+                    <div className="rating-bar-bg"><div className="rating-bar-fill" style={{ width: `${pct}%` }} /></div>
+                    <span className="rating-count">{pct.toFixed(1)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="parameter-scores">
+              <h4>Parameter Scores (All 15 Parameters)</h4>
+              {PARAMETERS.map((param) => {
+                const ps = slotData.parameterStats[param];
+                if (!ps) return null;
+                return (
+                  <div key={param} className="parameter-item">
+                    <span className="param-name">{param}</span>
+                    <div className="param-score-bar"><div className="param-score-fill" style={{ width: `${ps.percentage}%` }} /></div>
+                    <div className="param-scores-text">
+                      <span className="param-score">{ps.average}/10</span>
+                      <span className="param-percentage">{ps.percentage}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {(() => {
+        const activeSlot = statistics.hasSlot2 ? statistics.slot2 : statistics.slot1;
+        const topParams    = getTopParameters(activeSlot?.parameterStats);
+        const bottomParams = getBottomParameters(activeSlot?.parameterStats);
+        if (!topParams.length && !bottomParams.length) return null;
+        return (
+          <>
+            <div className="excellence-section">
+              <h4 className="section-title">🌟 Areas of Excellence</h4>
+              {!topParams.length
+                ? <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters above 9.0 in this slot.</p>
+                : <div className="excellence-grid">
+                    {topParams.map((item, idx) => (
+                      <div key={item.parameter} className="excellence-card">
+                        <div className="excellence-rank">#{idx + 1}</div>
+                        <div className="excellence-content">
+                          <span className="excellence-param">{item.parameter}</span>
+                          <div className="excellence-score">
+                            <span className="score-value">{item.average}/10</span>
+                            <span className="score-percentage">{item.percentage}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
+            <div className="improvement-section">
+              <h4 className="section-title">📈 Areas of Improvement</h4>
+              {!bottomParams.length
+                ? <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters below 8.0 — good performance.</p>
+                : <div className="improvement-grid">
+                    {bottomParams.map((item, idx) => {
+                      const isAreaOfConcern = statistics.hasSlot1 && statistics.hasSlot2
+                        && getBottomParameters(statistics.slot1.parameterStats).some(p => p.parameter === item.parameter);
+                      return (
+                        <div key={item.parameter}
+                          className={`improvement-card ${isAreaOfConcern ? 'area-of-concern' : ''}`}
+                          style={isAreaOfConcern ? { border: '2px solid #ef4444', background: 'rgba(239,68,68,0.08)' } : {}}>
+                          <div className="improvement-rank">{isAreaOfConcern ? '🚩' : `#${idx + 1}`}</div>
+                          <div className="improvement-content">
+                            <div style={{ flex: 1 }}>
+                              <span className="improvement-param">{item.parameter}</span>
+                              {isAreaOfConcern && <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: '700', marginTop: '4px' }}>🚨 Area of Concern — Needs Urgent Action</div>}
+                            </div>
+                            <div className="improvement-score">
+                              <span className="score-value">{item.average}/10</span>
+                              <span className="score-percentage">{item.percentage}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+              }
+            </div>
+          </>
+        );
+      })()}
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // TOAST COMPONENT (matches HoDDashboard)
 // ─────────────────────────────────────────────────────────────
 function Toast({ toast, onClose }) {
@@ -400,14 +539,60 @@ const AdminDashboard = () => {
   const handleLogout = () => { logoutUser(); navigate('/', { replace: true }); };
 
   const openFacultyModal = useCallback(async (faculty) => {
-    const stats = await fetchFacultyStats(faculty.id);
-    setSelectedFaculty({
-      ...faculty,
-      statistics: stats,
-      hasFeedback: stats ? stats.totalResponses > 0 : false,
-    });
+    // Show modal immediately with loading state
+    setSelectedFaculty({ ...faculty, loading: true, subjectReports: [], hasFeedback: false });
     setShowFacultyModal(true);
-  }, [fetchFacultyStats]);
+
+    // Find ALL assignment rows for this person in the same dept
+    const deptKey = `${faculty.college}_${faculty.dept}`;
+    const allRecords = (allDepartments[deptKey] || [])
+      .filter(f => f.name === faculty.name);
+
+    // Group by subject + year + sem — each group = one complete report in the modal
+    const subjectGroupMap = new Map();
+    allRecords.forEach(f => {
+      const key = `${f.subject || ''}||${f.year || ''}||${String(f.sem || f.semester || '')}`;
+      if (!subjectGroupMap.has(key)) {
+        subjectGroupMap.set(key, {
+          subject: f.subject || '—',
+          year: f.year || '—',
+          sem: String(f.sem || f.semester || '—'),
+          sections: [],
+          ids: [],
+        });
+      }
+      const grp = subjectGroupMap.get(key);
+      grp.ids.push(f.id);
+      const sec = String(f.sec || f.section || '');
+      if (sec && !grp.sections.includes(sec)) grp.sections.push(sec);
+    });
+
+    // Fetch aggregated stats for each subject group
+    const subjectReports = [];
+    for (const grp of subjectGroupMap.values()) {
+      const stats = grp.ids.length === 1
+        ? await fetchFacultyStats(grp.ids[0])
+        : await dataService.getMultiFacultyStats(grp.ids);
+      subjectReports.push({
+        subject: grp.subject,
+        year: grp.year,
+        sem: grp.sem,
+        sections: grp.sections.sort().join(', '),
+        statistics: stats,
+        hasFeedback: stats ? stats.totalResponses > 0 : false,
+      });
+    }
+
+    const hasAnyFeedback = subjectReports.some(r => r.hasFeedback);
+
+    setSelectedFaculty(prev => ({
+      ...prev,
+      loading: false,
+      subjectReports,
+      hasFeedback: hasAnyFeedback,
+      statistics: subjectReports[0]?.statistics || null, // kept for PDF/Excel compat
+    }));
+  }, [fetchFacultyStats, allDepartments]);
 
   const handleAddDepartment = async () => {
     if (!newDeptCollege || !newDeptName.trim()) {
@@ -1239,164 +1424,36 @@ const confirmDeleteResponses = async (downloadFirst) => {
                 </button>
               </div>
 
-              {!selectedFaculty.hasFeedback || !selectedFaculty.statistics ? (
+	{selectedFaculty.loading ? (
+                <div style={{ textAlign: 'center', padding: '50px 20px' }}>
+                  <div className="spinner-small" style={{ margin: '0 auto 14px', width: '30px', height: '30px', borderTopColor: '#ff6b9d', borderWidth: '3px' }} />
+                  <p style={{ color: '#64748b', fontWeight: '600', fontSize: '14px' }}>Loading statistics…</p>
+                </div>
+              ) : !selectedFaculty.hasFeedback ? (
                 <div className="no-feedback-message">
                   <span className="no-feedback-icon">📊</span>
                   <p>No feedback data available yet</p>
                   <p className="hint">Students need to submit feedback first</p>
                 </div>
               ) : (
-                <>
-                  {[
-                    { key: 'slot1', label: '📋 Previous Feedback Cycle', has: selectedFaculty.statistics.hasSlot1 },
-                    { key: 'slot2', label: '📋 Latest Feedback Cycle', has: selectedFaculty.statistics.hasSlot2 },
-                  ].map(({ key, label, has }) => {
-                    if (!has) return null;
-                    const slotData = selectedFaculty.statistics[key];
-                    return (
-                      <div key={key} className="slot-stats-section">
-                        <h4 className="slot-title">
-                          {label}
-                          {key === 'slot2' && selectedFaculty.statistics.hasSlot1 && (() => {
-                            const prev = parseFloat(selectedFaculty.statistics.slot1.overallAverage);
-                            const latest = parseFloat(slotData.overallAverage);
-                            const diff = (latest - prev).toFixed(2);
-                            return (
-                              <span style={{
-                                marginLeft: '12px', padding: '4px 12px', borderRadius: '8px',
-                                fontSize: '13px', fontWeight: '700',
-                                background: diff > 0 ? 'rgba(16,185,129,0.15)' : diff < 0 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
-                                color: diff > 0 ? '#10b981' : diff < 0 ? '#ef4444' : '#f59e0b',
-                              }}>
-                                {diff > 0 ? `↑ +${diff}` : diff < 0 ? `↓ ${diff}` : '→ No Change'} from Previous
-                              </span>
-                            );
-                          })()}
-                        </h4>
-                        <div className="stats-overview">
-                          <div className="stat-box">
-                            <span className="stat-number">
-                              {slotData.responseCount}
-                              {selectedFaculty?.batch?.totalStudents > 0 ? `/${selectedFaculty.batch.totalStudents}` : ''}
-                            </span>
-                            <span className="stat-text">Responses</span>
-                          </div>
-                          <div className="stat-box highlight">
-                            <span className="stat-number">{slotData.overallAverage}</span>
-                            <span className="stat-text">Average Rating</span>
-                          </div>
-                        </div>
-                        <div className="rating-distribution">
-                          <h4>Rating Distribution</h4>
-                          {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((rating) => {
-                            const count = slotData.ratingDistribution[rating] || 0;
-                            const total = Object.values(slotData.ratingDistribution).reduce((a, b) => a + b, 0);
-                            const percentage = total > 0 ? (count / total) * 100 : 0;
-                            return (
-                              <div key={rating} className="rating-bar-item">
-                                <span className="rating-label">⭐ {rating}</span>
-                                <div className="rating-bar-bg">
-                                  <div className="rating-bar-fill" style={{ width: `${percentage}%` }} />
-                                </div>
-                                <span className="rating-count">{percentage.toFixed(1)}%</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="parameter-scores">
-                          <h4>Parameter Scores (All 15 Parameters)</h4>
-                          {PARAMETERS.map((param) => {
-                            const paramStats = slotData.parameterStats[param];
-                            if (!paramStats) return null;
-                            return (
-                              <div key={param} className="parameter-item">
-                                <span className="param-name">{param}</span>
-                                <div className="param-score-bar">
-                                  <div className="param-score-fill" style={{ width: `${paramStats.percentage}%` }} />
-                                </div>
-                                <div className="param-scores-text">
-                                  <span className="param-score">{paramStats.average}/10</span>
-                                  <span className="param-percentage">{paramStats.percentage}%</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                (selectedFaculty.subjectReports || []).map((report, idx) => (
+                  <div key={idx}>
+                    <div className="sr-subject-header">
+                      <div className="sr-subject-left">
+                        <span className="sr-subject-name">{report.subject}</span>
+                        <span className="sr-subject-meta">Year {report.year} · Sem {report.sem} · Sec {report.sections}</span>
                       </div>
-                    );
-                  })}
-
-                  {(() => {
-                    const activeSlot = selectedFaculty.statistics.hasSlot2
-                      ? selectedFaculty.statistics.slot2
-                      : selectedFaculty.statistics.slot1;
-                    const topParams = getTopParameters(activeSlot?.parameterStats);
-                    const bottomParams = getBottomParameters(activeSlot?.parameterStats);
-                    if (topParams.length === 0 && bottomParams.length === 0) return null;
-                    return (
-                      <>
-                        <div className="excellence-section">
-                          <h4 className="section-title">🌟 Areas of Excellence</h4>
-                          {topParams.length === 0 ? (
-                            <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters above 9.0 in this slot.</p>
-                          ) : (
-                            <div className="excellence-grid">
-                              {topParams.map((item, idx) => (
-                                <div key={item.parameter} className="excellence-card">
-                                  <div className="excellence-rank">#{idx + 1}</div>
-                                  <div className="excellence-content">
-                                    <span className="excellence-param">{item.parameter}</span>
-                                    <div className="excellence-score">
-                                      <span className="score-value">{item.average}/10</span>
-                                      <span className="score-percentage">{item.percentage}%</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="improvement-section">
-                          <h4 className="section-title">📈 Areas of Improvement</h4>
-                          {bottomParams.length === 0 ? (
-                            <p style={{ color: '#94a3b8', fontSize: '13px', padding: '8px 0' }}>No parameters below 8.0 — good performance across all areas.</p>
-                          ) : (
-                            <div className="improvement-grid">
-                              {bottomParams.map((item, idx) => {
-                                let isAreaOfConcern = false;
-                                if (selectedFaculty.statistics.hasSlot1 && selectedFaculty.statistics.hasSlot2) {
-                                  const prevBottom = getBottomParameters(selectedFaculty.statistics.slot1.parameterStats);
-                                  isAreaOfConcern = prevBottom.some((p) => p.parameter === item.parameter);
-                                }
-                                return (
-                                  <div key={item.parameter}
-                                    className={`improvement-card ${isAreaOfConcern ? 'area-of-concern' : ''}`}
-                                    style={isAreaOfConcern ? { border: '2px solid #ef4444', background: 'rgba(239,68,68,0.08)' } : {}}>
-                                    <div className="improvement-rank">{isAreaOfConcern ? '🚩' : `#${idx + 1}`}</div>
-                                    <div className="improvement-content">
-                                      <div style={{ flex: 1 }}>
-                                        <span className="improvement-param">{item.parameter}</span>
-                                        {isAreaOfConcern && (
-                                          <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: '700', marginTop: '4px' }}>
-                                            🚨 Area of Concern - Needs Urgent Action
-                                          </div>
-                                        )}
-                                      </div>
-                                      <div className="improvement-score">
-                                        <span className="score-value">{item.average}/10</span>
-                                        <span className="score-percentage">{item.percentage}%</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </>
+                      <span className="sr-resp-badge">{report.statistics?.totalResponses || 0} responses</span>
+                    </div>
+                    {report.hasFeedback
+                      ? renderSlotStats(report.statistics)
+                      : <p className="sr-no-data">No feedback submitted for this subject yet.</p>
+                    }
+                    {idx < (selectedFaculty.subjectReports.length - 1) && (
+                      <div className="sr-divider" />
+                    )}
+                  </div>
+                ))
               )}
             </div>
 
