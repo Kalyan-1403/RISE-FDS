@@ -1433,7 +1433,8 @@ const HoDDashboard = () => {
                               ) : (
                                 <span className="esc-strength" title="Click to edit" onClick={() => { setEditStrengthId(s.id); setEditStrengthVal(String(s.strength || 0)); }}>{s.strength || 0}👤</span>
                               )}
-                              <button type="button" className="esc-btn esc-delete" onClick={() => showConfirm(`Delete "${s.sectionName}"?`, async () => { await sectionAPI.delete(s.id); setSections(prev => prev.filter(x => x.id !== s.id)); })}>🗑</button>return; await sectionAPI.delete(s.id); setSections(prev => prev.filter(x => x.id !== s.id)); }}>🗑</button>
+                              <button type="button" className="esc-btn esc-delete" onClick={() => showConfirm(`Delete "${s.sectionName}"?`, async () => { await sectionAPI.delete(s.id); setSections(prev => prev.filter(x => x.id !== s.id)); })}>🗑</button>
+return; await sectionAPI.delete(s.id); setSections(prev => prev.filter(x => x.id !== s.id)); }}>🗑</button>
                             </div>
                           ))}
                         </div>
