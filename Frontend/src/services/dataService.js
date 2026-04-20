@@ -330,6 +330,18 @@ const listBatches = async () => {
   }
 };
 
+const revokeBatch = async (batchId) => {
+  try {
+    const r = await batchAPI.revoke(batchId);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to revoke'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
+
 // FEEDBACK
 const submitFeedback = async (data) => {
   try {
@@ -428,6 +440,30 @@ const deleteCollegeFeedback = async (
   }
 };
 
+const updateProfile = async (data) => {
+  try {
+    const r = await authAPI.updateProfile(data);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to update profile'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
+
+const changePassword = async (data) => {
+  try {
+    const r = await authAPI.changePassword(data);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to change password'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
+
 // DASHBOARD
 const getAdminDashboard = async () => {
   try {
@@ -512,6 +548,9 @@ const dataService = {
   getAdminDashboard,
   getHoDDashboard,
   getFacultyReportData,
+  revokeBatch,
+  updateProfile,
+  changePassword,
 };
 
 export default dataService;

@@ -172,6 +172,33 @@ def list_batches():
     return jsonify({"batches": [b.to_dict() for b in batches]}), 200
 
 
+@batch_bp.route('/<batch_id>/revoke', methods=['DELETE'])
+@require_role(['hod', 'admin'])
+def revoke_batch(batch_id):
+    """Revoke a published batch: deactivates link and wipes all submitted responses."""
+    user = g.current_user
+    batch_id = sanitize_string(batch_id, 200)
+    batch = Batch.query.filter_by(batch_id=batch_id).first()
+    if not batch:
+        return jsonify({"error": "Batch not found"}), 404
+    if user.role == 'hod' and (batch.college != user.college or batch.department != user.department):
+        return jsonify({"error": "Access denied"}), 403
+    try:
+        from ..models.feedback import FeedbackSubmission, FeedbackRating
+        submission_ids = [s.id for s in FeedbackSubmission.query.filter_by(batch_db_id=batch.id).all()]
+        if submission_ids:
+            FeedbackRating.query.filter(FeedbackRating.submission_id.in_(submission_ids)).delete(synchronize_session='fetch')
+            FeedbackSubmission.query.filter_by(batch_db_id=batch.id).delete()
+        batch.is_active = False
+        db.session.commit()
+        logger.info(f"Batch revoked: {batch_id} by {user.user_id}")
+        return jsonify({"success": True, "message": "Batch revoked and responses wiped"}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Revoke failed: {e}")
+        return jsonify({"error": "Failed to revoke batch"}), 500
+
+
 # ─── Section Management Routes ───────────────────────────────────────────────
 
 from ..models.section import DepartmentSection

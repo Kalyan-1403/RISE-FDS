@@ -5,7 +5,7 @@ import dataService from '../../services/dataService.js';
 import { sectionAPI } from '../../services/api.js';
 import DeveloperCredit from '../DeveloperCredit/DeveloperCredit.jsx';
 import './HoDDashboard.css';
-import { generateFacultyPDF } from '../../utils/pdfGenerator';
+import { generateFacultyPDF, generateAbstractPDF } from '../../utils/pdfGenerator';
 import { generateFacultyExcel } from '../../utils/excelGenerator';
 
 const YEARS = ['II', 'III', 'IV'];
@@ -149,6 +149,31 @@ const HoDDashboard = () => {
   const [deletePwd,       setDeletePwd]       = useState('');
   const [deleteErr,       setDeleteErr]       = useState('');
   const [isDeleting,      setIsDeleting]      = useState(false);
+
+// Link modal (shown after successful publish)
+  const [linkModal, setLinkModal] = useState({ show: false, url: '' });
+
+  // Generic confirm modal (replaces window.confirm everywhere)
+  const [confirmModal, setConfirmModal] = useState({ show: false, message: '', pendingAction: null });
+  const showConfirm = useCallback((message, action) => {
+    setConfirmModal({ show: true, message, pendingAction: action });
+  }, []);
+
+  // Edit profile modal
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileForm,      setProfileForm]      = useState({ name: '', email: '', mobile: '' });
+  const [profilePwdForm,   setProfilePwdForm]   = useState({ currentPwd: '', newPwd: '', confirmPwd: '' });
+  const [profileTab,       setProfileTab]       = useState('details');
+  const [profileErr,       setProfileErr]       = useState('');
+  const [isSavingProfile,  setIsSavingProfile]  = useState(false);
+
+  // Academic year
+  const [academicYear, setAcademicYear] = useState(() =>
+    localStorage.getItem('academicYear') || (() => {
+      const y = new Date().getMonth() >= 5 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+      return `${y}-${String(y + 1).slice(-2)}`;
+    })()
+  );
 
   /* ── Toast ── */
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
@@ -322,58 +347,57 @@ const HoDDashboard = () => {
     }
   };
 
- const deleteFaculty = async (ids, subjectName = '') => {
-    const msg = subjectName 
-      ? `Remove assignment for "${subjectName}"? They will be removed from ALL sections they teach this specific subject in.` 
+ const deleteFaculty = (ids, subjectName = '') => {
+    const msg = subjectName
+      ? `Remove assignment for "${subjectName}"? They will be removed from ALL sections they teach this specific subject in.`
       : 'Remove this faculty?';
-    if (!window.confirm(msg)) return;
-    
     const idArray = Array.isArray(ids) ? ids : [ids];
-    
-    // INSTANT UI UPDATE: Remove the ghosts immediately before waiting for the network
-    setFacultyList(prev => prev.filter(f => !idArray.includes(f.id))); 
-    
-    try { 
-      for(const id of idArray) { await dataService.deleteFacultyById(id); }
-      await loadDashboardData(); // Syncs silently in the background
-      showToast('Successfully deleted.', 'success');
-    }
-    catch (err) { 
-      showToast(err.message || 'Delete failed.'); 
-      await loadDashboardData(); // If it fails, bring the original data back
-    }
-  };
-
-  const handleDeleteCurriculum = (key) => {
-    if (!window.confirm("Delete these semester subjects? You can define new ones anytime.")) return;
-    setCurriculum(prev => {
-      const c = { ...prev };
-      delete c[key];
-      return c;
+    showConfirm(msg, async () => {
+      setFacultyList(prev => prev.filter(f => !idArray.includes(f.id)));
+      try {
+        for (const id of idArray) { await dataService.deleteFacultyById(id); }
+        await loadDashboardData();
+        showToast('Successfully deleted.', 'success');
+      } catch (err) {
+        showToast(err.message || 'Delete failed.');
+        await loadDashboardData();
+      }
     });
-    showToast('Subjects deleted.', 'success');
   };
 
-  const clearFacultyPool = async () => {
-    if (!window.confirm('🗑️ Delete ALL unassigned faculty from the pool to add fresh faces for the new semester?')) return;
-    setIsSaving(true);
-    try {
-      for (const f of globalFacultyPool) { await dataService.deleteFacultyById(f.id); }
-      await loadDashboardData();
-      showToast('Pool cleared successfully.', 'success');
-    } catch (err) { showToast('Failed to clear pool.'); }
-    finally { setIsSaving(false); }
+ const handleDeleteCurriculum = (key) => {
+    showConfirm("Delete these semester subjects? You can define new ones anytime.", () => {
+      setCurriculum(prev => {
+        const c = { ...prev };
+        delete c[key];
+        return c;
+      });
+      showToast('Subjects deleted.', 'success');
+    });
   };
 
-  const clearAllAssignments = async () => {
-    if (!window.confirm('⚠️ DANGER: Remove ALL assigned faculty from all sections? This resets the dashboard for a new semester.')) return;
-    setIsSaving(true);
-    try {
-      for (const f of assignedFaculty) { await dataService.deleteFacultyById(f.id); }
-      await loadDashboardData();
-      showToast('All assignments cleared.', 'success');
-    } catch (err) { showToast('Failed to clear assignments.'); }
-    finally { setIsSaving(false); }
+  const clearFacultyPool = () => {
+    showConfirm('🗑️ Delete ALL unassigned faculty from the pool to add fresh faces for the new semester?', async () => {
+      setIsSaving(true);
+      try {
+        for (const f of globalFacultyPool) { await dataService.deleteFacultyById(f.id); }
+        await loadDashboardData();
+        showToast('Pool cleared successfully.', 'success');
+      } catch (err) { showToast('Failed to clear pool.'); }
+      finally { setIsSaving(false); }
+    });
+  };
+
+  const clearAllAssignments = () => {
+    showConfirm('⚠️ DANGER: Remove ALL assigned faculty from all sections? This resets the dashboard for a new semester.', async () => {
+      setIsSaving(true);
+      try {
+        for (const f of assignedFaculty) { await dataService.deleteFacultyById(f.id); }
+        await loadDashboardData();
+        showToast('All assignments cleared.', 'success');
+      } catch (err) { showToast('Failed to clear assignments.'); }
+      finally { setIsSaving(false); }
+    });
   };
 
   /* ═══════════════ DEFINE SUBJECTS (CURRICULUM) WORKFLOW ═══════════════ */
@@ -536,9 +560,8 @@ const HoDDashboard = () => {
       if (result?.feedbackLink) {
         const full = result.feedbackLink.startsWith('http')
           ? result.feedbackLink : `${window.location.origin}${result.feedbackLink}`;
-        try { await navigator.clipboard.writeText(full); } catch (_) {}
-        showToast('Link published and copied to clipboard!', 'success');
         setShowModal(false);
+        setLinkModal({ show: true, url: full });
         await loadDashboardData();
       }
     } catch (err) { showToast(err.message || 'Publish failed.'); }
@@ -564,13 +587,14 @@ const HoDDashboard = () => {
     } catch (err) { showToast('Failed to update section.'); }
   };
 
-  const deleteSection = async (s) => {
-    if (!window.confirm(`Delete section "${s.sectionName}"? Cannot be undone.`)) return;
-    try {
-      await sectionAPI.delete(s.id);
-      setSections(prev => prev.filter(x => x.id !== s.id));
-      if (selectedSection === s.sectionName) setSelectedSection(null);
-    } catch (err) { showToast('Failed to delete section.'); }
+  const deleteSection = (s) => {
+    showConfirm(`Delete section "${s.sectionName}"? Cannot be undone.`, async () => {
+      try {
+        await sectionAPI.delete(s.id);
+        setSections(prev => prev.filter(x => x.id !== s.id));
+        if (selectedSection === s.sectionName) setSelectedSection(null);
+      } catch (err) { showToast('Failed to delete section.'); }
+    });
   };
 
   /* ── Download / PDF / Excel ── */
@@ -599,6 +623,88 @@ const HoDDashboard = () => {
     catch (err) { setDeleteErr(err.message || 'Failed. Check your password.'); }
     finally { setIsDeleting(false); }
   };
+
+ /* ── Revoke batch ── */
+  const handleRevokeBatch = (batch) => {
+    showConfirm(
+      `Revoke feedback link for Year ${batch.year} · Sem ${batch.sem} · Sec ${batch.sec}? This permanently DELETES all ${batch.responseCount || 0} submitted responses and closes the link.`,
+      async () => {
+        try {
+          await dataService.revokeBatch(batch.id);
+          await loadDashboardData();
+          showToast('Batch revoked and all responses wiped.', 'success');
+        } catch (err) { showToast(err.message || 'Failed to revoke.'); }
+      }
+    );
+  };
+
+  /* ── Profile handlers ── */
+  const openProfileModal = () => {
+    setProfileForm({ name: currentUser.name || '', email: currentUser.email || '', mobile: currentUser.mobile || '' });
+    setProfilePwdForm({ currentPwd: '', newPwd: '', confirmPwd: '' });
+    setProfileTab('details'); setProfileErr('');
+    setShowProfileModal(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setProfileErr('');
+    if (!profileForm.name.trim()) { setProfileErr('Name is required.'); return; }
+    setIsSavingProfile(true);
+    try {
+      await dataService.updateProfile(profileForm);
+      showToast('Profile updated successfully.', 'success');
+      setShowProfileModal(false);
+    } catch (err) { setProfileErr(err.message || 'Failed to update.'); }
+    finally { setIsSavingProfile(false); }
+  };
+
+  const handleChangePassword = async () => {
+    setProfileErr('');
+    if (!profilePwdForm.currentPwd) { setProfileErr('Enter your current password.'); return; }
+    if (!profilePwdForm.newPwd) { setProfileErr('Enter a new password.'); return; }
+    if (profilePwdForm.newPwd !== profilePwdForm.confirmPwd) { setProfileErr('New passwords do not match.'); return; }
+    if (profilePwdForm.newPwd.length < 8) { setProfileErr('Password must be at least 8 characters.'); return; }
+    setIsSavingProfile(true);
+    try {
+      await dataService.changePassword({ current_password: profilePwdForm.currentPwd, new_password: profilePwdForm.newPwd });
+      showToast('Password changed successfully.', 'success');
+      setShowProfileModal(false);
+    } catch (err) { setProfileErr(err.message || 'Failed to change password.'); }
+    finally { setIsSavingProfile(false); }
+  };
+
+  /* ── Abstract PDF download ── */
+  const handleDownloadAbstract = async (year, sec) => {
+    const secFaculty = assignedFaculty.filter(f => f.year === year && f.sec === sec);
+    if (!secFaculty.length) { showToast('No assigned faculty for this section.'); return; }
+    showToast('Building abstract PDF…', 'info');
+    try {
+      const facultyWithStats = await Promise.all(secFaculty.map(async f => {
+        const stats = await dataService.getFacultyStats(f.id);
+        return { faculty: f, stats };
+      }));
+      const suggestions = facultyWithStats
+        .filter(item => item.stats)
+        .map(item => {
+          const sd = item.stats.hasSlot2 ? item.stats.slot2 : item.stats.slot1;
+          if (!sd) return null;
+          const sorted = Object.entries(sd.parameterStats || {}).sort(([, a], [, b]) => a.average - b.average);
+          const low = sorted[0];
+          return {
+            name: item.faculty.name,
+            suggestion: low ? `Needs improvement in "${low[0]}" (avg ${low[1].average}/10).` : 'No specific concerns.',
+          };
+        }).filter(Boolean);
+      const batch = allBatches.find(b => b.year === year && b.sec === sec);
+      const sem = batch?.sem || downloadSection || '?';
+      generateAbstractPDF(currentUser.college, currentUser.department, { year, sem, sec }, facultyWithStats, suggestions);
+      showToast('Abstract downloaded!', 'success');
+    } catch (err) { showToast('Failed to generate abstract.'); }
+  };
+
+  useEffect(() => {
+    localStorage.setItem('academicYear', academicYear);
+  }, [academicYear]);
 
   if (!currentUser) return null;
 
@@ -634,6 +740,10 @@ const HoDDashboard = () => {
           </div>
           <div className="header-right">
             <div className="user-info"><span className="user-icon">👤</span><span>{currentUser.name}</span></div>
+            <button className="logout-btn" style={{ background: '#7c3aed' }}
+              onClick={openProfileModal}>
+              ✏️ Edit Profile
+            </button>
             <button className="logout-btn btn-danger"
               onClick={() => { setDeletePwd(''); setDeleteErr(''); setShowDeleteModal(true); }}>
               🗑️ Delete Account
@@ -684,7 +794,14 @@ const HoDDashboard = () => {
               <div className="divider" />
 
               <div className="download-section">
-                <h4 className="download-title">📥 Download Section Responses</h4>
+                <h4 className="download-title">🗓️ Academic Year</h4>
+                <input type="text" value={academicYear} onChange={e => setAcademicYear(e.target.value)}
+                  placeholder="e.g. 2024-25" className="download-select"
+                  style={{ marginBottom: '10px', fontWeight: '700', textAlign: 'center' }} />
+              </div>
+
+              <div className="download-section">
+                <h4 className="download-title">📥 Download Abstract PDF</h4>
                 <select value={downloadYear} onChange={e => { setDownloadYear(e.target.value); setDownloadSection(''); }} className="download-select">
                   <option value="">Select Year</option>
                   {availableYears.map(y => <option key={y} value={y}>{y} Year</option>)}
@@ -696,8 +813,8 @@ const HoDDashboard = () => {
                 <button type="button" className="btn-download"
                   onClick={() => {
                     if (!downloadYear || !downloadSection) { showToast('Select Year and a completed Section.'); return; }
-                    showToast('Download format will be configured soon.', 'info');
-                  }}>📥 Download</button>
+                    handleDownloadAbstract(downloadYear, downloadSection);
+                  }}>📥 Download Abstract</button>
               </div>
             </section>
 
@@ -859,6 +976,11 @@ const HoDDashboard = () => {
                         <div className="lfc-top">
                           <span className={`lfc-status ${live ? 'live' : 'ended'}`}>{live ? '🟢 LIVE' : '⚫ ENDED'}</span>
                           <span className="lfc-slot">Slot {batch.slot}</span>
+                          <button type="button" onClick={() => handleRevokeBatch(batch)}
+                            title="Revoke link & wipe responses"
+                            style={{ marginLeft: 'auto', background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }}>
+                            🚫 Revoke
+                          </button>
                         </div>
                         <div className="lfc-identity">
                           <span>Year {batch.year}</span><span className="lfc-dot">·</span>
@@ -1311,7 +1433,7 @@ const HoDDashboard = () => {
                               ) : (
                                 <span className="esc-strength" title="Click to edit" onClick={() => { setEditStrengthId(s.id); setEditStrengthVal(String(s.strength || 0)); }}>{s.strength || 0}👤</span>
                               )}
-                              <button type="button" className="esc-btn esc-delete" onClick={async () => { if (!window.confirm(`Delete "${s.sectionName}"?`)) return; await sectionAPI.delete(s.id); setSections(prev => prev.filter(x => x.id !== s.id)); }}>🗑</button>
+                              <button type="button" className="esc-btn esc-delete" onClick={() => showConfirm(`Delete "${s.sectionName}"?`, async () => { await sectionAPI.delete(s.id); setSections(prev => prev.filter(x => x.id !== s.id)); })}>🗑</button>return; await sectionAPI.delete(s.id); setSections(prev => prev.filter(x => x.id !== s.id)); }}>🗑</button>
                             </div>
                           ))}
                         </div>
@@ -1386,6 +1508,112 @@ const HoDDashboard = () => {
                     {isDeleting ? 'Deleting…' : '🗑️ Yes, Delete'}
                   </button>
                   <button onClick={() => setShowDeleteModal(false)} disabled={isDeleting} className="btn-modal-cancel">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+       {/* ── Link Modal (post-publish) ── */}
+        {linkModal.show && (
+          <div className="modal-overlay" onClick={() => setLinkModal({ show: false, url: '' })}>
+            <div className="modal-content" style={{ maxWidth: '480px', padding: '28px' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px' }}>✅ Feedback Link Published!</h3>
+                <button onClick={() => setLinkModal({ show: false, url: '' })} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}>✕</button>
+              </div>
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '12px' }}>Share this link with students. It closes on the end date you set.</p>
+              <div style={{ background: '#f1f5f9', borderRadius: '8px', padding: '12px', fontSize: '13px', wordBreak: 'break-all', color: '#1e293b', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                {linkModal.url}
+              </div>
+              <button
+                onClick={async () => {
+                  try { await navigator.clipboard.writeText(linkModal.url); showToast('Link copied!', 'success'); setLinkModal({ show: false, url: '' }); }
+                  catch (_) { showToast('Copy failed — select and copy manually.'); }
+                }}
+                style={{ width: '100%', padding: '10px', background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>
+                📋 Copy Link & Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Generic Confirm Modal ── */}
+        {confirmModal.show && (
+          <div className="modal-overlay" onClick={() => setConfirmModal({ show: false, message: '', pendingAction: null })}>
+            <div className="modal-content" style={{ maxWidth: '400px', padding: '28px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+              <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚠️</div>
+              <p style={{ fontSize: '14px', color: '#334155', marginBottom: '20px', lineHeight: '1.6' }}>{confirmModal.message}</p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => { confirmModal.pendingAction?.(); setConfirmModal({ show: false, message: '', pendingAction: null }); }}
+                  style={{ flex: 1, padding: '10px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>
+                  Confirm
+                </button>
+                <button onClick={() => setConfirmModal({ show: false, message: '', pendingAction: null })}
+                  style={{ flex: 1, padding: '10px', background: 'transparent', border: '2px solid #e2e8f0', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', color: '#64748b' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Edit Profile Modal ── */}
+        {showProfileModal && (
+          <div className="modal-overlay" onClick={() => setShowProfileModal(false)}>
+            <div className="modal-content" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>✏️ Edit Profile</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>User ID: <strong>{currentUser.userId}</strong></p>
+              </div>
+              <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: '20px' }}>
+                {['details', 'password'].map(tab => (
+                  <button key={tab} type="button"
+                    onClick={() => { setProfileTab(tab); setProfileErr(''); }}
+                    style={{ flex: 1, padding: '10px', border: 'none', background: 'none', fontWeight: '700', fontSize: '13px', cursor: 'pointer', borderBottom: profileTab === tab ? '3px solid #7c3aed' : '3px solid transparent', color: profileTab === tab ? '#7c3aed' : '#64748b' }}>
+                    {tab === 'details' ? '👤 Personal Details' : '🔒 Change Password'}
+                  </button>
+                ))}
+              </div>
+              <div style={{ padding: '0 20px 20px' }}>
+                {profileTab === 'details' ? (
+                  <>
+                    {[['name', 'Full Name', 'text'], ['email', 'Email', 'email'], ['mobile', 'Mobile', 'tel']].map(([field, label, type]) => (
+                      <div className="form-field" key={field} style={{ marginBottom: '14px' }}>
+                        <label style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>{label}</label>
+                        <input type={type} value={profileForm[field]}
+                          onChange={e => setProfileForm(p => ({ ...p, [field]: e.target.value }))}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', marginTop: '4px' }} />
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    {[['currentPwd', 'Current Password'], ['newPwd', 'New Password (min 8 chars)'], ['confirmPwd', 'Confirm New Password']].map(([field, label]) => (
+                      <div className="form-field" key={field} style={{ marginBottom: '14px' }}>
+                        <label style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>{label}</label>
+                        <input type="password" value={profilePwdForm[field]}
+                          onChange={e => setProfilePwdForm(p => ({ ...p, [field]: e.target.value }))}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', marginTop: '4px' }} />
+                      </div>
+                    ))}
+                    <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '-8px' }}>
+                      Don't know your current password?{' '}
+                      <span style={{ color: '#7c3aed', cursor: 'pointer', fontWeight: '600' }}
+                        onClick={() => { setShowProfileModal(false); showToast('Use "Forgot Password" on the login page to reset.', 'info'); }}>
+                        Use Forgot Password on login page.
+                      </span>
+                    </p>
+                  </>
+                )}
+                {profileErr && <div style={{ color: '#ef4444', fontSize: '13px', padding: '8px', background: '#fef2f2', borderRadius: '6px', marginTop: '8px' }}>⚠️ {profileErr}</div>}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                  <button onClick={profileTab === 'details' ? handleSaveProfile : handleChangePassword}
+                    disabled={isSavingProfile}
+                    style={{ flex: 1, padding: '10px', background: isSavingProfile ? '#ccc' : 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: isSavingProfile ? 'not-allowed' : 'pointer' }}>
+                    {isSavingProfile ? '⏳ Saving…' : profileTab === 'details' ? '✅ Save Changes' : '🔒 Update Password'}
+                  </button>
+                  <button onClick={() => setShowProfileModal(false)} className="btn-modal-cancel">Cancel</button>
                 </div>
               </div>
             </div>

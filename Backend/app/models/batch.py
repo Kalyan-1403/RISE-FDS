@@ -138,6 +138,7 @@ class Batch(db.Model):
                 for bf in self.faculty_list
                 if bf.faculty
             ],
+            'responseCount': len(self.submissions),
             'isActive': self.is_active,
         }
 

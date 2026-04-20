@@ -129,6 +129,8 @@ export const authAPI = {
   resetPassword: (data) => api.post('/auth/reset-password', data),
   deleteAccount: (password) => api.delete('/auth/account', { data: { password } }),
   registerAdmin: (data) => api.post('/auth/register-admin', data),
+  updateProfile: (data) => api.put('/auth/profile', data),
+  changePassword: (data) => api.put('/auth/change-password', data),
 };
 
 export const facultyAPI = {
@@ -143,6 +145,7 @@ export const batchAPI = {
   create: (data) => api.post('/batch/create', data),
   getById: (batchId) => api.get(`/batch/${batchId}`),
   list: () => api.get('/batch/list'),
+  revoke: (batchId) => api.delete(`/batch/${batchId}/revoke`),
 };
 
 export const sectionAPI = {

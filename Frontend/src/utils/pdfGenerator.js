@@ -242,6 +242,103 @@ export const generateDepartmentPDF = (deptKey, facultyList, allStats, collegeNam
   return fileName;
 };
 
+export const generateAbstractPDF = (college, department, sectionInfo, facultyWithStats, suggestions = []) => {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const { year, sem, sec } = sectionInfo;
+
+  // Header
+  doc.setFillColor(139, 92, 246);
+  doc.rect(0, 0, pageWidth, 38, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RISE Krishna Sai Prakasam Group of Institutions', pageWidth / 2, 11, { align: 'center' });
+  doc.setFontSize(11);
+  doc.text('Student Feedback Abstract', pageWidth / 2, 19, { align: 'center' });
+  doc.setFontSize(9);
+  doc.text(`${college} College | ${department} Dept | Year ${year} | Sem ${sem} | Sec ${sec}`, pageWidth / 2, 27, { align: 'center' });
+  doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, 34, { align: 'center' });
+
+  let y = 46;
+
+  // Per-faculty parameter average table
+  facultyWithStats.forEach((item, idx) => {
+    const { faculty, stats } = item;
+    if (!stats) return;
+    const slotData = stats.hasSlot2 ? stats.slot2 : stats.slot1;
+    if (!slotData) return;
+
+    if (y > 230) { doc.addPage(); y = 20; }
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(139, 92, 246);
+    doc.text(`${idx + 1}. ${faculty.name}`, 14, y);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Subject: ${faculty.subject || '—'}  |  Responses: ${slotData.responseCount || 0}  |  Overall Avg: ${slotData.overallAverage}/10`, 14, y + 5);
+    y += 10;
+
+    const paramRows = PARAMETERS.map((param, i) => {
+      const ps = slotData.parameterStats?.[param];
+      return [(i + 1).toString(), param, ps ? ps.average.toString() : 'N/A', ps ? `${ps.percentage}%` : 'N/A'];
+    });
+
+    autoTable(doc, {
+      startY: y,
+      head: [['S.No', 'Parameter', 'Avg Rating (/10)', 'Satisfaction %']],
+      body: paramRows,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [139, 92, 246], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 12, halign: 'center' },
+        1: { cellWidth: 100 },
+        2: { cellWidth: 28, halign: 'center' },
+        3: { cellWidth: 28, halign: 'center' },
+      },
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  });
+
+  // Suggestions summary table
+  if (suggestions.length > 0) {
+    if (y > 220) { doc.addPage(); y = 20; }
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(45, 52, 54);
+    doc.text('Faculty-wise Summarized Suggestions', 14, y);
+    y += 4;
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Faculty Name', 'Summarized Suggestion']],
+      body: suggestions.map(s => [s.name, s.suggestion]),
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 3, valign: 'top' },
+      headStyles: { fillColor: [255, 107, 157], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 45, fontStyle: 'bold' }, 1: { cellWidth: 130 } },
+      margin: { left: 14, right: 14 },
+    });
+  }
+
+  // Footer
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`RISE Feedback Management System — Abstract | Page ${i} of ${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
+  }
+
+  const fileName = `Abstract_${college}_${department}_Y${year}_S${sem}_Sec${sec}.pdf`;
+  doc.save(fileName);
+  return fileName;
+};
+
 export const generateCollegePDF = (college, deptStructure, masterList, getFeedbackFn, calcStatsFn) => {
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();

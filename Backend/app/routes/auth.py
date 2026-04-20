@@ -307,6 +307,67 @@ def delete_account():
     logger.info(f"Account self-deleted: {user_id} ({college}/{department})")
     return response, 200
 
+@auth_bp.route('/profile', methods=['PUT'])
+@jwt_required()
+def update_profile():
+    """Update profile details: name, email, mobile."""
+    user_id = get_jwt_identity()
+    user = User.query.filter_by(user_id=user_id, is_active=True).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+    if 'name' in data:
+        name = sanitize_string(data['name'], 150)
+        valid, msg = validate_name(name)
+        if not valid:
+            return jsonify({"error": msg}), 400
+        user.name = name
+    if 'email' in data:
+        email = sanitize_string(data['email'], 150)
+        valid, msg = validate_email(email)
+        if not valid:
+            return jsonify({"error": msg}), 400
+        conflict = User.query.filter(db.func.lower(User.email) == email.lower(), User.user_id != user_id).first()
+        if conflict:
+            return jsonify({"error": "This email is already in use"}), 409
+        user.email = email
+    if 'mobile' in data:
+        mobile = sanitize_string(data['mobile'], 15)
+        valid, msg = validate_mobile(mobile)
+        if not valid:
+            return jsonify({"error": msg}), 400
+        user.mobile = mobile
+    db.session.commit()
+    logger.info(f"Profile updated: {user_id}")
+    return jsonify({"success": True, "user": user.to_dict()}), 200
+
+
+@auth_bp.route('/change-password', methods=['PUT'])
+@jwt_required()
+def change_password():
+    """Change password — requires current password verification."""
+    user_id = get_jwt_identity()
+    user = User.query.filter_by(user_id=user_id, is_active=True).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+    if not current_password or not user.check_password(current_password):
+        return jsonify({"error": "Current password is incorrect"}), 401
+    valid, msg = validate_password(new_password)
+    if not valid:
+        return jsonify({"error": msg}), 400
+    user.set_password(new_password)
+    db.session.commit()
+    logger.info(f"Password changed: {user_id}")
+    return jsonify({"success": True, "message": "Password changed successfully"}), 200
+
+
 @auth_bp.route('/register-admin', methods=['POST'])
 @limiter.limit("3 per minute")
 def register_admin():
