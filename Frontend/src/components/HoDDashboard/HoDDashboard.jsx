@@ -575,7 +575,7 @@ const HoDDashboard = () => {
     setEditSectionStrength(String(s.strength || 0));
   };
 
-  const saveEditSection = async (id) => {
+ const saveEditSection = async (id) => {
     if (!editSectionName.trim()) { showToast('Section name cannot be empty.'); return; }
     try {
       await sectionAPI.update(id, { sectionName: editSectionName.trim(), strength: Number(editSectionStrength) || 0 });
@@ -584,6 +584,7 @@ const HoDDashboard = () => {
       ));
       if (selectedSection === sections.find(s => s.id === id)?.sectionName) setSelectedSection(editSectionName.trim());
       setEditingSection(null);
+      loadDashboardData();
     } catch (err) { showToast('Failed to update section.'); }
   };
 
@@ -1431,7 +1432,7 @@ const live = batch.slotStartDate && endOfDay
                               {editStrengthId === s.id ? (
                                 <>
                                   <input type="number" value={editStrengthVal} onChange={e => setEditStrengthVal(e.target.value)} className="esc-str-input" autoFocus />
-                                  <button type="button" className="esc-btn esc-save" onClick={async () => { await sectionAPI.update(s.id, { strength: Number(editStrengthVal) }); setSections(prev => prev.map(x => x.id === s.id ? { ...x, strength: Number(editStrengthVal) } : x)); setEditStrengthId(null); }}>✓</button>
+                                  <button type="button" className="esc-btn esc-save" onClick={async () => { await sectionAPI.update(s.id, { strength: Number(editStrengthVal) }); setSections(prev => prev.map(x => x.id === s.id ? { ...x, strength: Number(editStrengthVal) } : x)); setEditStrengthId(null); loadDashboardData(); }}>✓</button>
                                   <button type="button" className="esc-btn esc-cancel" onClick={() => setEditStrengthId(null)}>✕</button>
                                 </>
                               ) : (
