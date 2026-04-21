@@ -679,32 +679,47 @@ const HoDDashboard = () => {
 
   /* ── Abstract PDF download ── */
  const handleDownloadAbstract = async (year, sec) => {
-    // Get the actual batch published for this year/sec so we use exactly
-    // the faculty that were included in that published link
-    const batch = allBatches.find(b =>
+    // 1. Find the target batch
+    const targetBatch = allBatches.find(b =>
       b.year === year && (b.sec === sec || b.section === sec)
     );
-    if (!batch) { showToast('No published batch found for this section.'); return; }
+    
+    if (!targetBatch) { 
+      showToast('No published batch found for this section.'); 
+      return; 
+    }
 
-    // Fetch full batch with faculty list (list endpoint is lightweight, get_batch has faculty)
     setIsGeneratingAbstract(true);
     try {
-      const fullBatch = await dataService.getBatch(batch.batch_id || batch.batchId);
+      // 2. Fetch full batch details
+      const fullBatch = await dataService.getBatch(targetBatch.batch_id || targetBatch.batchId);
       const secFaculty = fullBatch?.faculty || [];
-      if (!secFaculty.length) { showToast('No faculty found in this published batch.'); setIsGeneratingAbstract(false); return; }
+      
+      if (!secFaculty.length) { 
+        showToast('No faculty found in this published batch.'); 
+        setIsGeneratingAbstract(false); 
+        return; 
+      }
 
+      // 3. Fetch stats for each faculty
       const facultyWithStats = await Promise.all(secFaculty.map(async f => {
         const stats = await dataService.getFacultyStats(f.id);
         return { faculty: f, stats };
       }));
+
+      // 4. Generate suggestions safely
       const suggestions = facultyWithStats
-        .filter(item => item.stats)
+        .filter(item => item.stats && (item.stats.slot1 || item.stats.slot2)) // Ensure stats exist
         .map(item => {
           const sd = item.stats.hasSlot2 ? item.stats.slot2 : item.stats.slot1;
-          if (!sd) return null;
-          const sorted = Object.entries(sd.parameterStats || {}).sort(([, a], [, b]) => a.average - b.average);
+          
+          // Safety check: if there is no slot data yet, return null
+          if (!sd || !sd.parameterStats) return null;
+
+          const sorted = Object.entries(sd.parameterStats).sort(([, a], [, b]) => a.average - b.average);
           const low  = sorted[0];
           const high = sorted[sorted.length - 1];
+
           return {
             name: item.faculty.name,
             subject: item.faculty.subject || '—',
@@ -714,11 +729,22 @@ const HoDDashboard = () => {
             ].filter(Boolean).join(' ') || 'No specific concerns raised.',
           };
         }).filter(Boolean);
-      const batch = allBatches.find(b => b.year === year && b.sec === sec);
-      const sem = batch?.sem || '?';
-      generateAbstractPDF(currentUser.college, currentUser.department, { year, sem, sec }, facultyWithStats, suggestions);
+
+      // 5. Extract Semester from the existing targetBatch object
+      const sem = targetBatch?.sem || '?';
+
+      // 6. Generate the PDF
+      generateAbstractPDF(
+        currentUser.college, 
+        currentUser.department, 
+        { year, sem, sec }, 
+        facultyWithStats, 
+        suggestions
+      );
+      
       showToast('Abstract PDF downloaded!', 'success');
     } catch (err) {
+      console.error("Abstract Generation Error:", err); // Log the actual error to console
       showToast('Failed to generate abstract.');
     } finally {
       setIsGeneratingAbstract(false);

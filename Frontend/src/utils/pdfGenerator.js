@@ -254,7 +254,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
 
   // Total responses = max responseCount across faculty (same batch)
   const totalResponses = validFaculty.reduce((max, item) => {
-    const sd = item.stats?.hasSlot2 ? item.stats?.slot2 : item.stats?.slot1;
+    const sd = item.stats?.hasSlot2 ? (item.stats?.slot2 || item.stats?.slot1) : item.stats?.slot1;
     return Math.max(max, sd?.responseCount || 0);
   }, 0);
 
