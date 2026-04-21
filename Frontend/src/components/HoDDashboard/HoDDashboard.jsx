@@ -679,36 +679,24 @@ const HoDDashboard = () => {
 
   /* ── Abstract PDF download ── */
 const handleDownloadAbstract = async (year, sec) => {
-    const targetBatch = allBatches.find(b =>
+    const batch = allBatches.find(b =>
       b.year === year && (b.sec === sec || b.section === sec)
     );
-
-    if (!targetBatch) {
-      showToast('No published batch found for this section.');
-      return;
-    }
+    if (!batch) { showToast('No published batch found for this section.'); return; }
 
     setIsGeneratingAbstract(true);
     try {
-      const fetchId = targetBatch.id || targetBatch.batch_id || targetBatch.batchId;
-      if (!fetchId) { showToast('Error: Batch ID is missing.'); setIsGeneratingAbstract(false); return; }
-
+      const fetchId = batch.id || batch.batch_id || batch.batchId;
       const fullBatch = await dataService.getBatch(fetchId);
       const secFaculty = fullBatch?.faculty || [];
+      if (!secFaculty.length) { showToast('No faculty found.'); setIsGeneratingAbstract(false); return; }
 
-      if (!secFaculty.length) {
-        showToast('No faculty found in this published batch.');
-        setIsGeneratingAbstract(false);
-        return;
-      }
-
-      // FIX: Use a sequential for...of loop instead of Promise.all to prevent database deadlocks
+      // Safe sequential loop to protect database
       const facultyWithStats = [];
       for (const f of secFaculty) {
         try {
           const rawStats = await dataService.getFacultyStats(f.id);
           const sd = rawStats?.hasSlot2 ? rawStats.slot2 : rawStats?.slot1;
-
           let sentiment = { pos: 0, neg: 0, total: 0, top: 'N/A', low: 'N/A' };
 
           if (sd && sd.responseCount > 0) {
@@ -721,7 +709,6 @@ const handleDownloadAbstract = async (year, sec) => {
                const positiveRatio = posParamRatings / totalParamRatings;
                sentiment.pos = Math.round(positiveRatio * totalStudents);
             }
-
             sentiment.total = totalStudents;
             sentiment.neg = totalStudents - sentiment.pos;
 
@@ -733,20 +720,17 @@ const handleDownloadAbstract = async (year, sec) => {
           }
           facultyWithStats.push({ faculty: f, stats: sd, sentiment });
         } catch (err) {
-          console.error(`Failed to fetch stats for ${f.name}`, err);
+          console.error(`Failed stats for ${f.name}`, err);
           facultyWithStats.push({ faculty: f, stats: null, sentiment: { pos: 0, neg: 0, total: 0, top: 'N/A', low: 'N/A' } });
         }
       }
 
-      generateAbstractPDF(
-        currentUser.college,
-        currentUser.department,
-        { year, sem: targetBatch.sem || 'Unknown', sec },
-        facultyWithStats
-      );
+      const sem = batch?.sem || '?';
+      // ONLY pass the single facultyWithStats array now (no more suggestions array needed)
+      generateAbstractPDF(currentUser.college, currentUser.department, { year, sem, sec }, facultyWithStats);
       showToast('Abstract PDF downloaded!', 'success');
     } catch (err) {
-      console.error('Abstract Generation Error:', err);
+      console.error(err);
       showToast('Failed to generate abstract.');
     } finally {
       setIsGeneratingAbstract(false);

@@ -249,7 +249,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
 
   if (!facultyWithStats || facultyWithStats.length === 0) return;
 
-  // --- PAGE 1: PERFORMANCE MATRIX ---
+  // --- PAGE 1: HEADER ---
   doc.setFillColor(255, 107, 157);
   doc.rect(0, 0, pageW, 35, 'F');
   doc.setTextColor(255, 255, 255);
@@ -265,7 +265,31 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
 
   let y = 42;
 
-  // Add line breaks to long subjects so they don't stretch the columns
+  // --- PAGE 1: FACULTY MAPPING TABLE ---
+  doc.setFontSize(10);
+  doc.setTextColor(45, 52, 54);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Subject - Faculty Mapping', pageW / 2, y, { align: 'center' });
+  y += 4;
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Faculty Name', 'Subject']],
+    body: facultyWithStats.map(item => [item.faculty?.name || 'Unknown', item.faculty?.subject || '-']),
+    theme: 'grid',
+    styles: { fontSize: 8.5, cellPadding: 2.5, valign: 'middle' },
+    headStyles: { fillColor: [139, 92, 246], textColor: [255, 255, 255], halign: 'center' },
+    columnStyles: { 
+      0: { cellWidth: 70, fontStyle: 'bold' }, 
+      1: { cellWidth: 90 } 
+    },
+    margin: { left: (pageW - 160) / 2 },
+    tableWidth: 160
+  });
+
+  y = doc.lastAutoTable.finalY + 8;
+
+  // --- PAGE 1: PERFORMANCE MATRIX ---
   const formatHeader = (text) => text ? text.replace(' & ', ' &\n') : 'Unknown';
 
   const tableHead = [
@@ -276,7 +300,6 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
     (idx + 1).toString(),
     param,
     ...facultyWithStats.map(item => {
-      // FIX: Use standard hyphen '-', not em-dash
       return item.stats?.parameterStats?.[param] ? item.stats.parameterStats[param].average.toFixed(1) : '-';
     })
   ]);
@@ -298,7 +321,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
     headStyles: { fillColor: [139, 92, 246], textColor: [255, 255, 255] },
     columnStyles: {
       0: { cellWidth: 10 },
-      1: { cellWidth: 70, halign: 'left' } // Keep parameter text left-aligned
+      1: { cellWidth: 70, halign: 'left' } 
     },
     didParseCell: (data) => {
       if (data.row.index >= PARAMETERS.length && data.section === 'body') {
@@ -318,7 +341,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
 
   const summaryBody = facultyWithStats.map(item => {
     const s = item.sentiment;
-    if (s.total === 0) {
+    if (!s || s.total === 0) {
       return [`${item.faculty?.name}\n(${item.faculty?.subject || 'N/A'})`, 'No feedback responses submitted yet.'];
     }
     return [
