@@ -153,6 +153,9 @@ const HoDDashboard = () => {
 // Link modal (shown after successful publish)
   const [linkModal, setLinkModal] = useState({ show: false, url: '' });
 
+  // Abstract PDF generation loading
+  const [isGeneratingAbstract, setIsGeneratingAbstract] = useState(false);
+
   // Generic confirm modal (replaces window.confirm everywhere)
   const [confirmModal, setConfirmModal] = useState({ show: false, message: '', pendingAction: null });
   const showConfirm = useCallback((message, action) => {
@@ -678,7 +681,7 @@ const HoDDashboard = () => {
   const handleDownloadAbstract = async (year, sec) => {
     const secFaculty = assignedFaculty.filter(f => f.year === year && f.sec === sec);
     if (!secFaculty.length) { showToast('No assigned faculty for this section.'); return; }
-    showToast('Building abstract PDF…', 'info');
+    setIsGeneratingAbstract(true);
     try {
       const facultyWithStats = await Promise.all(secFaculty.map(async f => {
         const stats = await dataService.getFacultyStats(f.id);
@@ -690,17 +693,26 @@ const HoDDashboard = () => {
           const sd = item.stats.hasSlot2 ? item.stats.slot2 : item.stats.slot1;
           if (!sd) return null;
           const sorted = Object.entries(sd.parameterStats || {}).sort(([, a], [, b]) => a.average - b.average);
-          const low = sorted[0];
+          const low  = sorted[0];
+          const high = sorted[sorted.length - 1];
           return {
             name: item.faculty.name,
-            suggestion: low ? `Needs improvement in "${low[0]}" (avg ${low[1].average}/10).` : 'No specific concerns.',
+            subject: item.faculty.subject || '—',
+            suggestion: [
+              high ? `Top strength: "${high[0]}" — avg ${high[1].average}/10.` : '',
+              low  ? `Needs attention: "${low[0]}" — avg ${low[1].average}/10.` : '',
+            ].filter(Boolean).join(' ') || 'No specific concerns raised.',
           };
         }).filter(Boolean);
       const batch = allBatches.find(b => b.year === year && b.sec === sec);
-      const sem = batch?.sem || downloadSection || '?';
+      const sem = batch?.sem || '?';
       generateAbstractPDF(currentUser.college, currentUser.department, { year, sem, sec }, facultyWithStats, suggestions);
-      showToast('Abstract downloaded!', 'success');
-    } catch (err) { showToast('Failed to generate abstract.'); }
+      showToast('Abstract PDF downloaded!', 'success');
+    } catch (err) {
+      showToast('Failed to generate abstract.');
+    } finally {
+      setIsGeneratingAbstract(false);
+    }
   };
 
   useEffect(() => {
@@ -1519,7 +1531,36 @@ const live = batch.slotStartDate && endOfDay
           </div>
         )}
 
-       {/* ── Link Modal (post-publish) ── */}
+       {/* ── Abstract PDF Loading Overlay ── */}
+        {isGeneratingAbstract && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(4px)', zIndex: 99999,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px',
+          }}>
+            <div style={{
+              background: 'white', borderRadius: '20px', padding: '36px 48px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px',
+            }}>
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '50%',
+                border: '5px solid #e2e8f0',
+                borderTopColor: '#ff6b9d',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+              <p style={{ margin: 0, fontWeight: '700', fontSize: '15px', color: '#1e293b' }}>
+                Building Abstract PDF…
+              </p>
+              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                Fetching ratings for all faculty
+              </p>
+            </div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {/* ── Link Modal (post-publish) ── */}
         {linkModal.show && (
           <div className="modal-overlay" onClick={() => setLinkModal({ show: false, url: '' })}>
             <div className="modal-content" style={{ maxWidth: '480px', padding: '28px' }} onClick={e => e.stopPropagation()}>
