@@ -679,59 +679,70 @@ const HoDDashboard = () => {
 
   /* ── Abstract PDF download ── */
  const handleDownloadAbstract = async (year, sec) => {
-  const targetBatch = allBatches.find(b => b.year === year && (b.sec === sec || b.section === sec));
-  if (!targetBatch) return showToast('No published batch found.');
-
-  setIsGeneratingAbstract(true);
-  try {
-    const fullBatch = await dataService.getBatch(targetBatch.batch_id || targetBatch.batchId);
-    const secFaculty = fullBatch?.faculty || [];
-    const totalResponses = targetBatch.responseCount || 0;
-
-    const facultyWithStats = await Promise.all(secFaculty.map(async f => {
-      const stats = await dataService.getFacultyStats(f.id);
-      return { faculty: f, stats };
-    }));
-
-    const suggestions = facultyWithStats.map(item => {
-      const sd = item.stats?.hasSlot2 ? item.stats?.slot2 : item.stats?.slot1;
-      if (!sd) return null;
-
-      // Logic for Sentiment Ratios (Simulated based on rating distribution)
-      // We assume ratings 7-10 are 'Satisfied' and 1-6 'Need Improvement'
-      const dist = sd.ratingDistribution || {};
-      const positiveCount = (dist['7'] || 0) + (dist['8'] || 0) + (dist['9'] || 0) + (dist['10'] || 0);
-      const negativeCount = totalResponses - positiveCount;
-
-      const sorted = Object.entries(sd.parameterStats || {}).sort(([, a], [, b]) => a.average - b.average);
-      const low = sorted[0]?.[0] || "Punctuality";
-      const high = sorted[sorted.length - 1]?.[0] || "Subject Knowledge";
-
-      return {
-        name: item.faculty.name,
-        subject: item.faculty.subject || '—',
-        positive: positiveCount,
-        negative: negativeCount,
-        total: totalResponses,
-        topStrength: high,
-        needArea: low
-      };
-    }).filter(Boolean);
-
-    generateAbstractPDF(
-      currentUser.college, 
-      currentUser.department, 
-      { year, sem: targetBatch.sem, sec }, 
-      facultyWithStats, 
-      suggestions
+    const targetBatch = allBatches.find(b =>
+      b.year === year && (b.sec === sec || b.section === sec)
     );
-    showToast('Abstract PDF downloaded!', 'success');
-  } catch (err) {
-    showToast('Failed to generate abstract.');
-  } finally {
-    setIsGeneratingAbstract(false);
-  }
-};
+
+    if (!targetBatch) {
+      showToast('No published batch found for this section.');
+      return;
+    }
+
+    setIsGeneratingAbstract(true);
+    try {
+      const fullBatch = await dataService.getBatch(targetBatch.batch_id || targetBatch.batchId);
+      const secFaculty = fullBatch?.faculty || [];
+
+      if (!secFaculty.length) {
+        showToast('No faculty found in this published batch.');
+        setIsGeneratingAbstract(false);
+        return;
+      }
+
+      // Map EVERY faculty member safely, regardless of whether they have stats yet
+      const facultyWithStats = await Promise.all(secFaculty.map(async (f) => {
+        try {
+          const rawStats = await dataService.getFacultyStats(f.id);
+          // Extract the active slot data directly
+          const sd = rawStats?.hasSlot2 ? rawStats.slot2 : rawStats?.slot1;
+
+          let sentiment = { pos: 0, neg: 0, total: 0, top: 'N/A', low: 'N/A' };
+
+          if (sd && sd.responseCount > 0) {
+            const dist = sd.ratingDistribution || {};
+            sentiment.pos = (dist['10'] || 0) + (dist['9'] || 0) + (dist['8'] || 0) + (dist['7'] || 0);
+            sentiment.total = sd.responseCount;
+            sentiment.neg = sentiment.total - sentiment.pos;
+
+            if (sd.parameterStats && Object.keys(sd.parameterStats).length > 0) {
+              const sorted = Object.entries(sd.parameterStats).sort(([, a], [, b]) => a.average - b.average);
+              sentiment.low = sorted[0]?.[0] || 'N/A';
+              sentiment.top = sorted[sorted.length - 1]?.[0] || 'N/A';
+            }
+          }
+          // Pass the flattened slot data directly as 'stats'
+          return { faculty: f, stats: sd, sentiment };
+        } catch (err) {
+          console.error(`Failed to fetch stats for ${f.name}`, err);
+          // Return safe fallback so the column still appears in the PDF
+          return { faculty: f, stats: null, sentiment: { pos: 0, neg: 0, total: 0, top: 'N/A', low: 'N/A' } };
+        }
+      }));
+
+      generateAbstractPDF(
+        currentUser.college,
+        currentUser.department,
+        { year, sem: targetBatch.sem || 'Unknown', sec },
+        facultyWithStats
+      );
+      showToast('Abstract PDF downloaded!', 'success');
+    } catch (err) {
+      console.error('Abstract Generation Error:', err);
+      showToast('Failed to generate abstract.');
+    } finally {
+      setIsGeneratingAbstract(false);
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('academicYear', academicYear);

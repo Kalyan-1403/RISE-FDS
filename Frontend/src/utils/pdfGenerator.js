@@ -242,35 +242,56 @@ export const generateDepartmentPDF = (deptKey, facultyList, allStats, collegeNam
   return fileName;
 };
 
-export const generateAbstractPDF = (college, department, sectionInfo, facultyWithStats, suggestions = []) => {
-  const doc = new jsPDF('l', 'mm', 'a4'); // Landscape for horizontal space
+export const generateAbstractPDF = (college, department, sectionInfo, facultyWithStats) => {
+  const doc = new jsPDF('l', 'mm', 'a4'); // 'l' = landscape
   const { year, sem, sec } = sectionInfo;
-  const usableW = doc.internal.pageSize.getWidth() - 20;
+  const pageW = doc.internal.pageSize.getWidth();
 
-  // Header Logic (Same as your current file but compact)
-  doc.setFillColor(255, 107, 157); doc.rect(0, 0, 297, 35, 'F');
-  doc.setTextColor(255, 255, 255); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-  doc.text('RISE KRISHNA SAI PRAKASAM GROUP OF INSTITUTIONS', 148.5, 12, { align: 'center' });
-  doc.setFontSize(10); doc.text('Student Feedback Abstract — Average Ratings Compiled', 148.5, 22, { align: 'center' });
-  doc.text(`${department} | Year ${year} | Sem ${sem} | Sec ${sec}`, 148.5, 28, { align: 'center' });
+  // Guard against empty data to prevent invisible crashes
+  if (!facultyWithStats || facultyWithStats.length === 0) {
+    doc.setFontSize(12);
+    doc.text("No Faculty Data Available.", 14, 20);
+    doc.save(`Abstract_${college}_${department}_Sec${sec}_Error.pdf`);
+    return;
+  }
+
+  // --- PAGE 1: PERFORMANCE MATRIX ---
+  doc.setFillColor(255, 107, 157);
+  doc.rect(0, 0, pageW, 35, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RISE KRISHNA SAI PRAKASAM GROUP OF INSTITUTIONS', pageW / 2, 12, { align: 'center' });
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Student Feedback Abstract — Average Ratings Compiled', pageW / 2, 20, { align: 'center' });
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`${department} | Year ${year} | Sem ${sem} | Sec ${sec}`, pageW / 2, 28, { align: 'center' });
 
   let y = 42;
 
-  // PAGE 1: THE MATRIX
-  const tableHead = [['S.No', 'Parameters', ...facultyWithStats.map(f => f.faculty.subject || f.faculty.name)]];
+  // Build Headers: S.No, Parameters, [Faculty 1], [Faculty 2], ...
+  const tableHead = [
+    ['S.No', 'Parameters', ...facultyWithStats.map(item => item.faculty?.subject || item.faculty?.name || 'Unknown')]
+  ];
+
+  // Build Rows: 1 to 15
   const tableBody = PARAMETERS.map((param, idx) => [
-    idx + 1,
-    param, // Full Parameter Name
+    (idx + 1).toString(),
+    param,
     ...facultyWithStats.map(item => {
-      const sd = item.stats?.hasSlot2 ? item.stats?.slot2 : item.stats?.slot1;
-      return sd?.parameterStats?.[param] ? sd.parameterStats[param].average.toFixed(1) : '—';
+      return item.stats?.parameterStats?.[param] ? item.stats.parameterStats[param].average.toFixed(1) : '—';
     })
   ]);
 
-  // Append Overall Average and Responses rows
+  // Add Footer Rows for Overalls and Totals
   tableBody.push(['', 'OVERALL AVERAGE', ...facultyWithStats.map(item => {
-    const sd = item.stats?.hasSlot2 ? item.stats?.slot2 : item.stats?.slot1;
-    return sd ? parseFloat(sd.overallAverage).toFixed(2) : '—';
+    return item.stats?.overallAverage ? parseFloat(item.stats.overallAverage).toFixed(2) : '—';
+  })]);
+
+  tableBody.push(['', 'TOTAL RESPONSES', ...facultyWithStats.map(item => {
+    return item.stats?.responseCount ? item.stats.responseCount.toString() : '0';
   })]);
 
   autoTable(doc, {
@@ -278,38 +299,52 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
     head: tableHead,
     body: tableBody,
     theme: 'grid',
-    styles: { fontSize: 7.5, cellPadding: 1.5 }, // Reduced font to fit one page
-    headStyles: { fillColor: [139, 92, 246], halign: 'center' },
-    columnStyles: { 
-      0: { cellWidth: 10, halign: 'center' }, 
-      1: { cellWidth: 75 } // Ensures full parameter text is visible
+    styles: { fontSize: 7.5, cellPadding: 1.5, valign: 'middle' },
+    headStyles: { fillColor: [139, 92, 246], textColor: [255, 255, 255], halign: 'center' },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 78 } // Locks width so all 15 strings fit without wrapping too much
     },
     didParseCell: (data) => {
+      // Highlight the Average and Response rows
       if (data.row.index >= PARAMETERS.length && data.section === 'body') {
-        data.cell.styles.fontStyle = 'bold';
         data.cell.styles.fillColor = [240, 249, 255];
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.textColor = [15, 23, 42];
       }
     }
   });
 
-  // PAGE 2: SENTIMENT SUMMARY
-  doc.addPage();
-  doc.setTextColor(45, 52, 54); doc.setFontSize(12); doc.text('Detailed Student Insights & Sentiment Analysis', 14, 15);
+  // --- PAGE 2: SENTIMENT ANALYSIS ---
+  doc.addPage('a4', 'l');
+  doc.setTextColor(45, 52, 54);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Detailed Student Insights & Sentiment Analysis', 14, 15);
 
-  const summaryBody = suggestions.map(s => [
-    `${s.name}\n(${s.subject})`,
-    `• POSITIVE (${s.positive}/${s.total}): Students felt satisfied with the teaching style, specifically citing ${s.topStrength.toLowerCase()}.\n` +
-    `• IMPROVEMENTS NEEDED (${s.negative}/${s.total}): Some students felt teaching needs improvement in ${s.needArea.toLowerCase()} and related materials.`
-  ]);
+  const summaryBody = facultyWithStats.map(item => {
+    const s = item.sentiment;
+    if (s.total === 0) {
+      return [`${item.faculty?.name}\n(${item.faculty?.subject || 'N/A'})`, 'No feedback responses submitted yet.'];
+    }
+    return [
+      `${item.faculty?.name}\n(${item.faculty?.subject || 'N/A'})`,
+      `• POSITIVE (${s.pos}/${s.total}): ${s.pos} students felt satisfied with the teaching style, specifically citing strengths in "${s.top}".\n\n` +
+      `• IMPROVEMENTS NEEDED (${s.neg}/${s.total}): ${s.neg} students felt teaching needs improvement in areas such as "${s.low}".`
+    ];
+  });
 
   autoTable(doc, {
     startY: 22,
-    head: [['Faculty Name', 'Summarized Feedback & Sentiment']],
+    head: [['Faculty Name & Subject', 'Summarized Feedback & Sentiment']],
     body: summaryBody,
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 4 },
-    headStyles: { fillColor: [255, 107, 157] },
-    columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold' } }
+    styles: { fontSize: 9.5, cellPadding: 5, lineHeight: 1.4 },
+    headStyles: { fillColor: [255, 107, 157], textColor: [255, 255, 255] },
+    columnStyles: {
+      0: { cellWidth: 55, fontStyle: 'bold', fillColor: [248, 250, 252] },
+      1: { cellWidth: 'auto' }
+    }
   });
 
   doc.save(`Abstract_${college}_${department}_Sec${sec}.pdf`);
