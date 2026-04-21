@@ -678,7 +678,8 @@ const HoDDashboard = () => {
   };
 
   /* ── Abstract PDF download ── */
- const handleDownloadAbstract = async (year, sec) => {
+const handleDownloadAbstract = async (year, sec) => {
+    // 1. Find the target batch from the dashboard list
     const targetBatch = allBatches.find(b =>
       b.year === year && (b.sec === sec || b.section === sec)
     );
@@ -690,7 +691,17 @@ const HoDDashboard = () => {
 
     setIsGeneratingAbstract(true);
     try {
-      const fullBatch = await dataService.getBatch(targetBatch.batch_id || targetBatch.batchId);
+      // FIX: Check for standard 'id' first, then fallbacks.
+      const fetchId = targetBatch.id || targetBatch.batch_id || targetBatch.batchId;
+      
+      if (!fetchId) {
+        showToast('Error: Batch ID is missing.');
+        setIsGeneratingAbstract(false);
+        return;
+      }
+
+      // 2. Fetch the full batch details from the database
+      const fullBatch = await dataService.getBatch(fetchId);
       const secFaculty = fullBatch?.faculty || [];
 
       if (!secFaculty.length) {
@@ -699,17 +710,17 @@ const HoDDashboard = () => {
         return;
       }
 
-      // Map EVERY faculty member safely, regardless of whether they have stats yet
+      // 3. Map EVERY faculty member safely
       const facultyWithStats = await Promise.all(secFaculty.map(async (f) => {
         try {
           const rawStats = await dataService.getFacultyStats(f.id);
-          // Extract the active slot data directly
           const sd = rawStats?.hasSlot2 ? rawStats.slot2 : rawStats?.slot1;
 
           let sentiment = { pos: 0, neg: 0, total: 0, top: 'N/A', low: 'N/A' };
 
           if (sd && sd.responseCount > 0) {
             const dist = sd.ratingDistribution || {};
+            // Calculate Positive (7-10) and Negative (1-6)
             sentiment.pos = (dist['10'] || 0) + (dist['9'] || 0) + (dist['8'] || 0) + (dist['7'] || 0);
             sentiment.total = sd.responseCount;
             sentiment.neg = sentiment.total - sentiment.pos;
@@ -720,15 +731,15 @@ const HoDDashboard = () => {
               sentiment.top = sorted[sorted.length - 1]?.[0] || 'N/A';
             }
           }
-          // Pass the flattened slot data directly as 'stats'
+          
           return { faculty: f, stats: sd, sentiment };
         } catch (err) {
           console.error(`Failed to fetch stats for ${f.name}`, err);
-          // Return safe fallback so the column still appears in the PDF
           return { faculty: f, stats: null, sentiment: { pos: 0, neg: 0, total: 0, top: 'N/A', low: 'N/A' } };
         }
       }));
 
+      // 4. Generate the PDF
       generateAbstractPDF(
         currentUser.college,
         currentUser.department,
