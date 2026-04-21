@@ -92,6 +92,7 @@ const HoDDashboard = () => {
   // ─── CURRICULUM STATE (Saved to LocalStorage - GHOSTING FIXED) ───
   const [curriculum, setCurriculum] = useState({});
   const isCurriculumLoaded = useRef(false);
+  const pollingRef = useRef(null);
 
   // Safely load ONLY when currentUser is fully resolved
   useEffect(() => {
