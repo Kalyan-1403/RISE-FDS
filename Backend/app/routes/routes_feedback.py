@@ -66,7 +66,7 @@ def submit_feedback():
     batch = Batch.query.filter_by(
         batch_id=batch_id_str,
         is_active=True,
-    ).first()
+    ).with_for_update().first()
 
     if not batch:
         inactive_batch = Batch.query.filter_by(

@@ -1,9 +1,11 @@
 import logging
 from flask import Blueprint, request, jsonify, g, current_app
-from datetime import datetime
+from datetime import datetime, timezone
+from sqlalchemy.exc import IntegrityError
 from ..extensions import db
 from ..models.batch import Batch, BatchFaculty
 from ..models.faculty import Faculty
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from ..middleware.auth_middleware import require_role, require_auth
 from ..utils.validators import sanitize_string
 
@@ -64,7 +66,7 @@ def create_batch():
         return jsonify({"error": "Slot must be a number"}), 400
 
     # Generate a unique Batch ID
-    batch_id = f"{college}-{department}-{branch}-{year}-{semester}-{section}-{int(datetime.utcnow().timestamp())}"
+    batch_id = f"{college}-{department}-{branch}-{year}-{semester}-{section}-{int(datetime.now(timezone.utc).timestamp())}"
 
     # Parse dates safely
     start_date = None
@@ -116,7 +118,11 @@ def create_batch():
         created_by=user.id,
     )
     db.session.add(batch)
-    db.session.flush()
+    try:
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": f"A Slot {slot} batch already exists for this section."}), 409
 
     # Associate faculty with batch
     added_faculty = 0
@@ -131,7 +137,11 @@ def create_batch():
         db.session.rollback()
         return jsonify({"error": "None of the provided faculty IDs are valid"}), 400
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": f"A Slot {slot} batch already exists for this section."}), 409
 
     logger.info(f"Batch created: {batch_id} by {user.user_id} with {added_faculty} faculty")
 
@@ -297,22 +307,25 @@ def update_section(section_id):
     if 'sectionName' in data:
         section.section_name = sanitize_string(data['sectionName'], 50)
 
-    db.session.commit()
+    try:
+        matching_batches = []
+        if 'strength' in data:
+            matching_batches = Batch.query.filter(
+                Batch.college == section.college,
+                Batch.department == section.department,
+                Batch.section == section.section_name,
+                Batch.is_active == True,
+            ).all()
+            for b in matching_batches:
+                b.total_students = section.strength
 
-    # Sync total_students on all active batches that match this section
-    # Sync total_students on all active batches that match this section
-    if 'strength' in data:
-        matching_batches = Batch.query.filter(
-            Batch.college == section.college,
-            Batch.department == section.department,
-            Batch.section == section.section_name,
-            Batch.is_active == True,
-        ).all()
-        for b in matching_batches:
-            b.total_students = section.strength
+        db.session.commit()
         if matching_batches:
-            db.session.commit()
             logger.info(f"Synced total_students={section.strength} to {len(matching_batches)} batch(es) for section {section.section_name}")
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        logger.error(f"Section update failed id={section_id}: {e}")
+        return jsonify({"error": "Failed to update section. Please try again."}), 500
 
     logger.info(f"Section updated: id={section_id} by {user.user_id}")
     return jsonify({"success": True, "section": section.to_dict()}), 200

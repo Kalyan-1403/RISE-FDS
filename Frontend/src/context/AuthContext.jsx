@@ -82,7 +82,7 @@ export const AuthProvider = ({ children }) => {
     if (accessToken) {
       setAccessToken(accessToken);
     }
-    sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData));
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData));
     setUser(userData);
   }, []);
 

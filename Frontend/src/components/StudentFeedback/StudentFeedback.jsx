@@ -143,11 +143,15 @@ const StudentFeedback = () => {
       };
 
       batchData.faculty.forEach((fac) => {
-        const facultyRatings = {};
-        PARAMETERS.forEach((param, idx) => {
-          const rating = ratings[`${idx}-${fac.id}`];
-          facultyRatings[param] = parseInt(rating);
-        });
+          const facultyRatings = {};
+          PARAMETERS.forEach((param, idx) => {
+            const raw = ratings[`${idx}-${fac.id}`];
+            const rating = parseInt(raw, 10);
+            if (isNaN(rating) || rating < 1 || rating > 10) {
+              throw new Error(`Invalid rating for parameter "${param}". Please select a value between 1 and 10.`);
+            }
+            facultyRatings[param] = rating;
+          });
 
         feedbackData.responses.push({
           facultyId: fac.id,

@@ -10,7 +10,8 @@ from flask_jwt_extended import (
     set_refresh_cookies,
     unset_refresh_cookies,
 )
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db, limiter, add_to_blocklist
 from ..models.user import User
@@ -194,7 +195,7 @@ def forgot_password():
 
     otp = str(secrets.randbelow(900000) + 100000)
     user.reset_otp = otp
-    user.reset_otp_expiry = datetime.utcnow() + timedelta(minutes=10)
+    user.reset_otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
     db.session.commit()
 
     delivered = send_otp_email(user.email, user.user_id, otp)
@@ -223,7 +224,7 @@ def reset_password():
     if not user or not user.reset_otp or user.reset_otp != otp:
         return jsonify({"error": "Invalid User ID or OTP"}), 400
 
-    if user.reset_otp_expiry and datetime.utcnow() > user.reset_otp_expiry:
+    if user.reset_otp_expiry and datetime.now(timezone.utc) > user.reset_otp_expiry.replace(tzinfo=timezone.utc):
         user.reset_otp = None
         user.reset_otp_expiry = None
         db.session.commit()
@@ -280,31 +281,38 @@ def delete_account():
     if not password or not user.check_password(password):
         return jsonify({"error": "Incorrect password. Please confirm your current password."}), 401
 
-    # Revoke current token
+    # Capture log context before role branch so it's always defined
+    log_college = user.college or ''
+    log_dept = user.department or ''
+
+    # Revoke current token before any DB changes
     jti = get_jwt()["jti"]
     add_to_blocklist(jti)
 
-    if user.role == 'hod':
-        # HoD: delete credentials + all department data
-        college = user.college
-        department = user.department
-        batches = Batch.query.filter_by(college=college, department=department).all()
-        for batch in batches:
-            db.session.delete(batch)
-        faculty_records = Faculty.query.filter_by(college=college, department=department).all()
-        for f in faculty_records:
-            db.session.delete(f)
-    # Admin roles (Principal/Director/Chairman): delete credentials only — data is preserved
+    try:
+        if user.role == 'hod':
+            # HoD: delete credentials + all department data
+            batches = Batch.query.filter_by(college=log_college, department=log_dept).all()
+            for batch in batches:
+                db.session.delete(batch)
+            faculty_records = Faculty.query.filter_by(college=log_college, department=log_dept).all()
+            for f in faculty_records:
+                db.session.delete(f)
+        # Admin roles: delete credentials only — data is preserved
 
-    db.session.delete(user)
-    db.session.commit()
+        db.session.delete(user)
+        db.session.commit()
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        logger.error(f"Account delete failed for {user_id}: {e}")
+        return jsonify({"error": "Failed to delete account. Please try again."}), 500
 
     response = make_response(jsonify({
         "success": True,
         "message": "Account deleted successfully"
     }))
     unset_refresh_cookies(response)
-    logger.info(f"Account self-deleted: {user_id} ({college}/{department})")
+    logger.info(f"Account self-deleted: {user_id} ({log_college}/{log_dept})")
     return response, 200
 
 @auth_bp.route('/profile', methods=['PUT'])

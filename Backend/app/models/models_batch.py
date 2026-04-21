@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from ..extensions import db
 
 
@@ -73,7 +73,7 @@ class Batch(db.Model):
     )
     created_at = db.Column(
         db.DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -96,8 +96,12 @@ class Batch(db.Model):
             'college',
             'department',
         ),
+        db.UniqueConstraint(
+            'college', 'department', 'branch',
+            'year', 'semester', 'section', 'slot',
+            name='uq_batch_slot_identity',
+        ),
     )
-
     def to_dict(self):
         return {
             'id': self.batch_id,
