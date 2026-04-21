@@ -702,7 +702,9 @@ const handleDownloadAbstract = async (year, sec) => {
         return;
       }
 
-      const facultyWithStats = await Promise.all(secFaculty.map(async (f) => {
+      // FIX: Use a sequential for...of loop instead of Promise.all to prevent database deadlocks
+      const facultyWithStats = [];
+      for (const f of secFaculty) {
         try {
           const rawStats = await dataService.getFacultyStats(f.id);
           const sd = rawStats?.hasSlot2 ? rawStats.slot2 : rawStats?.slot1;
@@ -711,14 +713,10 @@ const handleDownloadAbstract = async (year, sec) => {
 
           if (sd && sd.responseCount > 0) {
             const dist = sd.ratingDistribution || {};
-            // Sum all positive ratings (7-10)
             const posParamRatings = (dist['10'] || 0) + (dist['9'] || 0) + (dist['8'] || 0) + (dist['7'] || 0);
-            
-            // Total ratings given (should be around responseCount * 15)
             const totalParamRatings = Object.values(dist).reduce((sum, val) => sum + val, 0);
             const totalStudents = sd.responseCount;
 
-            // Normalize the parameter counts back to a "Student Count"
             if (totalParamRatings > 0) {
                const positiveRatio = posParamRatings / totalParamRatings;
                sentiment.pos = Math.round(positiveRatio * totalStudents);
@@ -733,12 +731,12 @@ const handleDownloadAbstract = async (year, sec) => {
               sentiment.top = sorted[sorted.length - 1]?.[0] || 'N/A';
             }
           }
-          return { faculty: f, stats: sd, sentiment };
+          facultyWithStats.push({ faculty: f, stats: sd, sentiment });
         } catch (err) {
           console.error(`Failed to fetch stats for ${f.name}`, err);
-          return { faculty: f, stats: null, sentiment: { pos: 0, neg: 0, total: 0, top: 'N/A', low: 'N/A' } };
+          facultyWithStats.push({ faculty: f, stats: null, sentiment: { pos: 0, neg: 0, total: 0, top: 'N/A', low: 'N/A' } });
         }
-      }));
+      }
 
       generateAbstractPDF(
         currentUser.college,
