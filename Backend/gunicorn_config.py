@@ -4,11 +4,11 @@ import os
 # Server
 bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
 workers = 1
-threads = 4    # <--- ADD THIS LINE
-worker_class = "gthread" # <--- CHANGE THIS FROM "sync" TO "gthread"
-timeout = 120
-graceful_timeout = 30
-keepalive = 5
+threads = 2
+worker_class = "gthread"
+timeout = 60
+graceful_timeout = 20
+keepalive = 2
 
 # Performance
 preload_app = False

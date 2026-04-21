@@ -240,7 +240,8 @@ const HoDDashboard = () => {
     }
     loadDashboardData();
     loadSections();
-    const interval = setInterval(loadDashboardData, 30000);
+    pollingRef.current = setInterval(loadDashboardData, 30000);
+    const interval = pollingRef.current;
     const onFocus = () => loadDashboardData();
     window.addEventListener('focus', onFocus);
     return () => { clearInterval(interval); window.removeEventListener('focus', onFocus); };
@@ -734,6 +735,8 @@ const handleDownloadAbstract = async (year, sec) => {
       showToast('Failed to generate abstract.');
     } finally {
       setIsGeneratingAbstract(false);
+      // restart background poll
+      pollingRef.current = setInterval(loadDashboardData, 30000);
     }
   };
   useEffect(() => {

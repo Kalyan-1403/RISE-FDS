@@ -33,10 +33,14 @@ class BaseConfig:
     SQLALCHEMY_DATABASE_URI = database_url or "postgresql://localhost:5432/rise_feedback_dev"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_size': 10,
-        'pool_recycle': 300,
-        'pool_pre_ping': True,
-        'max_overflow': 20,
+        'poolclass': __import__('sqlalchemy.pool', fromlist=['NullPool']).NullPool,
+        'connect_args': {
+            'connect_timeout': 10,
+            'keepalives': 1,
+            'keepalives_idle': 30,
+            'keepalives_interval': 10,
+            'keepalives_count': 5,
+        },
     }
 
     FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
