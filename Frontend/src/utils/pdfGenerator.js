@@ -243,317 +243,76 @@ export const generateDepartmentPDF = (deptKey, facultyList, allStats, collegeNam
 };
 
 export const generateAbstractPDF = (college, department, sectionInfo, facultyWithStats, suggestions = []) => {
-  const doc     = new jsPDF('l', 'mm', 'a4');
-  const pageW   = doc.internal.pageSize.getWidth();
-  const pageH   = doc.internal.pageSize.getHeight();
-  const margin  = 10;
-  const usableW = pageW - 2 * margin;
+  const doc = new jsPDF('l', 'mm', 'a4'); // Landscape for horizontal space
   const { year, sem, sec } = sectionInfo;
+  const usableW = doc.internal.pageSize.getWidth() - 20;
 
-  const validFaculty = facultyWithStats.filter(item => item.stats);
+  // Header Logic (Same as your current file but compact)
+  doc.setFillColor(255, 107, 157); doc.rect(0, 0, 297, 35, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+  doc.text('RISE KRISHNA SAI PRAKASAM GROUP OF INSTITUTIONS', 148.5, 12, { align: 'center' });
+  doc.setFontSize(10); doc.text('Student Feedback Abstract — Average Ratings Compiled', 148.5, 22, { align: 'center' });
+  doc.text(`${department} | Year ${year} | Sem ${sem} | Sec ${sec}`, 148.5, 28, { align: 'center' });
 
-  // Total responses = max responseCount across faculty (same batch)
-  const totalResponses = validFaculty.reduce((max, item) => {
-    const sd = item.stats?.hasSlot2 ? (item.stats?.slot2 || item.stats?.slot1) : item.stats?.slot1;
-    return Math.max(max, sd?.responseCount || 0);
-  }, 0);
+  let y = 42;
 
-  // ── Color palette (exact from form CSS) ────────────────────
-  const PINK    = [255, 107, 157];   // #ff6b9d
-  const YELLOW  = [254, 202,  87];   // #feca57
-  const PURPLE  = [139,  92, 246];   // #8b5cf6
-  const LPURPLE = [237, 233, 254];   // light purple tint
-  const LYELLOW = [255, 251, 234];   // #fffbea
-  const LBLUE   = [240, 249, 255];   // #f0f9ff
-  const LGRAY   = [226, 232, 240];   // #e2e8f0
-  const DARK    = [ 45,  52,  54];
-  const WHITE   = [255, 255, 255];
-
-  const ratingBg = (val) => {
-    const n = parseFloat(val);
-    if (isNaN(n))  return [248, 250, 252];
-    if (n >= 9)    return [209, 250, 229];
-    if (n >= 7)    return [219, 234, 254];
-    if (n >= 5)    return [254, 243, 199];
-    return               [254, 226, 226];
-  };
-  const ratingFg = (val) => {
-    const n = parseFloat(val);
-    if (isNaN(n))  return [100, 116, 139];
-    if (n >= 9)    return [  6,  95,  70];
-    if (n >= 7)    return [ 30,  64, 175];
-    if (n >= 5)    return [120,  53,  15];
-    return               [127,  29,  29];
-  };
-
-  // ══════════════════════════════════════════════════════════
-  // HEADER — mirrors .modal-header gradient (#ff6b9d → #feca57)
-  // ══════════════════════════════════════════════════════════
-  const hdrH = 44;
-  // Base pink fill
-  doc.setFillColor(...PINK);
-  doc.rect(0, 0, pageW, hdrH, 'F');
-  // Yellow gradient overlay (right side)
-  doc.setFillColor(...YELLOW);
-  doc.rect(pageW * 0.68, 0, pageW * 0.32, hdrH, 'F');
-  // Blend strip (salmon) to smooth transition
-  doc.setFillColor(255, 154, 122);
-  doc.rect(pageW * 0.52, 0, pageW * 0.22, hdrH, 'F');
-
-  doc.setTextColor(...WHITE);
-
-  // h1 — institution name (uppercase like CSS text-transform: uppercase)
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.text('RISE KRISHNA SAI PRAKASAM GROUP OF INSTITUTIONS', pageW / 2, 10, { align: 'center' });
-
-  // h2 — address
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Valluru (V), Ongole (M), Prakasam (Dt)', pageW / 2, 16, { align: 'center' });
-
-  // h3 — form title
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Feedback on Teaching and Learning', pageW / 2, 23, { align: 'center' });
-
-  // p.form-title
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.text('(Student Feedback Abstract — Average Ratings Compiled)', pageW / 2, 28.5, { align: 'center' });
-
-  // Meta-tags strip — matches .meta-tags chips
-  const tags = [
-    `${department} Department`,
-    `Year ${year}`,
-    `Semester ${sem}`,
-    `Section ${sec}`,
-    `${totalResponses} Responses`,
-  ];
-  const tagW = usableW / tags.length;
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'bold');
-  tags.forEach((tag, i) => {
-    const tx = margin + i * tagW;
-    // White pill background (rgba simulation via light fill)
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(tx + 1, 32.5, tagW - 2, 8, 2, 2, 'F');
-    doc.setTextColor(80, 0, 50);
-    doc.text(tag, tx + tagW / 2, 37.8, { align: 'center' });
-  });
-
-  let y = hdrH + 6;
-
-  // ══════════════════════════════════════════════════════════
-  // FACULTY MAPPING TABLE — mirrors .faculty-mapping-table
-  // ══════════════════════════════════════════════════════════
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...DARK);
-  doc.text('Subject - Faculty Mapping', pageW / 2, y, { align: 'center' });
-  y += 3;
-
-  autoTable(doc, {
-    startY: y,
-    head: [['Faculty Name', 'Subject']],
-    body: validFaculty.map(item => [item.faculty.name, item.faculty.subject || '\u2014']),
-    theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 3, valign: 'middle', lineColor: LGRAY, lineWidth: 0.3 },
-    headStyles: {
-      fillColor: PURPLE,   // .mapping-table thead gradient start
-      textColor: WHITE,
-      fontStyle: 'bold',
-      halign:    'left',
-      fontSize:   9,
-    },
-    columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 70 },
-      1: { cellWidth: 80 },
-    },
-    tableWidth: 150,
-    margin: { left: (pageW - 150) / 2 },
-  });
-
-  y = doc.lastAutoTable.finalY + 5;
-
-  // ══════════════════════════════════════════════════════════
-  // RATING SCALE BOX — mirrors .rating-info
-  // ══════════════════════════════════════════════════════════
-  doc.setFillColor(...LYELLOW);
-  doc.setDrawColor(...YELLOW);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(margin, y, usableW, 10, 2, 2, 'FD');
-  doc.setTextColor(133, 77, 14);
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Rating Scale:', margin + 4, y + 6.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...DARK);
-  doc.text(
-    '10=Outstanding  9=Excellent  8=Very Good  7=Good  6=Above Average  5=Average  4=Fair  3=Below Average  2=Poor  1=Very Poor',
-    margin + 28, y + 6.5
-  );
-  y += 14;
-
-  // ══════════════════════════════════════════════════════════
-  // MAIN FEEDBACK TABLE — mirrors .feedback-table
-  // ══════════════════════════════════════════════════════════
-  const snoW   = 12;
-  const paramW = 72;
-  const facColW = Math.min(32, Math.max(15, (usableW - snoW - paramW - 2) / Math.max(validFaculty.length, 1)));
-
-  const tableHead = [[
-    'S.No',
-    'Parameters',
-    ...validFaculty.map(item => item.faculty.subject || item.faculty.name),
-  ]];
-
+  // PAGE 1: THE MATRIX
+  const tableHead = [['S.No', 'Parameters', ...facultyWithStats.map(f => f.faculty.subject || f.faculty.name)]];
   const tableBody = PARAMETERS.map((param, idx) => [
     idx + 1,
-    param,
-    ...validFaculty.map(item => {
+    param, // Full Parameter Name
+    ...facultyWithStats.map(item => {
       const sd = item.stats?.hasSlot2 ? item.stats?.slot2 : item.stats?.slot1;
-      const ps = sd?.parameterStats?.[param];
-      return ps ? ps.average.toFixed(1) : '\u2014';
-    }),
+      return sd?.parameterStats?.[param] ? sd.parameterStats[param].average.toFixed(1) : '—';
+    })
   ]);
 
-  // Overall Average row
-  tableBody.push([
-    '',
-    'Overall Average',
-    ...validFaculty.map(item => {
-      const sd = item.stats?.hasSlot2 ? item.stats?.slot2 : item.stats?.slot1;
-      return sd ? parseFloat(sd.overallAverage).toFixed(2) : '\u2014';
-    }),
-  ]);
-
-  // Responses row
-  tableBody.push([
-    '',
-    'No. of Responses',
-    ...validFaculty.map(item => {
-      const sd = item.stats?.hasSlot2 ? item.stats?.slot2 : item.stats?.slot1;
-      return sd ? sd.responseCount : 0;
-    }),
-  ]);
+  // Append Overall Average and Responses rows
+  tableBody.push(['', 'OVERALL AVERAGE', ...facultyWithStats.map(item => {
+    const sd = item.stats?.hasSlot2 ? item.stats?.slot2 : item.stats?.slot1;
+    return sd ? parseFloat(sd.overallAverage).toFixed(2) : '—';
+  })]);
 
   autoTable(doc, {
     startY: y,
-    head:   tableHead,
-    body:   tableBody,
-    theme:  'grid',
-    styles: {
-      fontSize:    7.5,
-      cellPadding: 2.2,
-      valign:      'middle',
-      lineColor:   LGRAY,
-      lineWidth:   0.3,
+    head: tableHead,
+    body: tableBody,
+    theme: 'grid',
+    styles: { fontSize: 7.5, cellPadding: 1.5 }, // Reduced font to fit one page
+    headStyles: { fillColor: [139, 92, 246], halign: 'center' },
+    columnStyles: { 
+      0: { cellWidth: 10, halign: 'center' }, 
+      1: { cellWidth: 75 } // Ensures full parameter text is visible
     },
-    headStyles: {
-      // .feedback-table th: background: linear-gradient(135deg, #ffeaa7, #fed6e3)
-      fillColor:  [255, 234, 167],   // #ffeaa7
-      textColor:  DARK,
-      fontStyle:  'bold',
-      halign:     'center',
-      fontSize:    8,
-    },
-    columnStyles: {
-      0: { cellWidth: snoW,   halign: 'center', fontStyle: 'bold' },
-      1: { cellWidth: paramW, halign: 'left'  },
-      ...Object.fromEntries(
-        validFaculty.map((_, i) => [i + 2, { cellWidth: facColW, halign: 'center', fontStyle: 'bold' }])
-      ),
-    },
-    margin: { left: margin, right: margin },
-    didParseCell(data) {
-      const isAvgRow  = data.row.index === PARAMETERS.length;
-      const isRespRow = data.row.index === PARAMETERS.length + 1;
-      const isFacCol  = data.column.index >= 2 && data.section === 'body';
-
-      if (isAvgRow && data.section === 'body') {
-        data.cell.styles.fillColor  = LPURPLE;
-        data.cell.styles.textColor  = [109, 40, 217];
-        data.cell.styles.fontStyle  = 'bold';
-        data.cell.styles.fontSize   = 8.5;
+    didParseCell: (data) => {
+      if (data.row.index >= PARAMETERS.length && data.section === 'body') {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fillColor = [240, 249, 255];
       }
-      if (isRespRow && data.section === 'body') {
-        data.cell.styles.fillColor  = LBLUE;
-        data.cell.styles.textColor  = [12, 74, 110];
-        data.cell.styles.fontStyle  = 'bold';
-      }
-      if (isFacCol && !isAvgRow && !isRespRow) {
-        data.cell.styles.fillColor = ratingBg(data.cell.raw);
-        data.cell.styles.textColor = ratingFg(data.cell.raw);
-      }
-    },
+    }
   });
 
-  y = doc.lastAutoTable.finalY + 8;
+  // PAGE 2: SENTIMENT SUMMARY
+  doc.addPage();
+  doc.setTextColor(45, 52, 54); doc.setFontSize(12); doc.text('Detailed Student Insights & Sentiment Analysis', 14, 15);
 
-  // ══════════════════════════════════════════════════════════
-  // SUMMARIZED COMMENTS — mirrors per-faculty comments section
-  // ══════════════════════════════════════════════════════════
-  if (suggestions.length > 0) {
-    if (y > pageH - 60) { doc.addPage(); y = 15; }
+  const summaryBody = suggestions.map(s => [
+    `${s.name}\n(${s.subject})`,
+    `• POSITIVE (${s.positive}/${s.total}): Students felt satisfied with the teaching style, specifically citing ${s.topStrength.toLowerCase()}.\n` +
+    `• IMPROVEMENTS NEEDED (${s.negative}/${s.total}): Some students felt teaching needs improvement in ${s.needArea.toLowerCase()} and related materials.`
+  ]);
 
-    // Section header — mirrors the blue comments box
-    doc.setFillColor(...LBLUE);
-    doc.setDrawColor(14, 165, 233);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(margin, y, usableW, 10, 2, 2, 'FD');
-    doc.setTextColor(12, 74, 110);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Comments on Each Faculty  (Summarized)', pageW / 2, y + 6.8, { align: 'center' });
-    y += 14;
+  autoTable(doc, {
+    startY: 22,
+    head: [['Faculty Name', 'Summarized Feedback & Sentiment']],
+    body: summaryBody,
+    theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 4 },
+    headStyles: { fillColor: [255, 107, 157] },
+    columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold' } }
+  });
 
-    suggestions.forEach((s, i) => {
-      if (y > pageH - 28) { doc.addPage(); y = 15; }
-
-      // Faculty label bar
-      doc.setFillColor(219, 234, 254);
-      doc.setDrawColor(147, 197, 253);
-      doc.setLineWidth(0.3);
-      doc.roundedRect(margin, y, usableW, 8, 1.5, 1.5, 'FD');
-      doc.setTextColor(30, 64, 175);
-      doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${i + 1}. ${s.name}`, margin + 4, y + 5.5);
-      if (s.subject) {
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(100, 116, 139);
-        doc.text(s.subject, margin + usableW - 3, y + 5.5, { align: 'right' });
-      }
-      y += 11;
-
-      // Suggestion text
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(...DARK);
-      const lines = doc.splitTextToSize(s.suggestion, usableW - 8);
-      doc.text(lines, margin + 4, y);
-      y += lines.length * 4.5 + 5;
-    });
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // FOOTER on every page
-  // ══════════════════════════════════════════════════════════
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(7.5);
-    doc.setTextColor(180, 180, 180);
-    doc.text(
-      `RISE Feedback Management System - Abstract Report  |  ${department} | Year ${year} | Sem ${sem} | Sec ${sec} | ${totalResponses} Responses  |  Page ${i} of ${pageCount}`,
-      pageW / 2, pageH - 5, { align: 'center' }
-    );
-  }
-
-  const fileName = `Abstract_${college}_${department}_Y${year}_S${sem}_Sec${sec}.pdf`;
-  doc.save(fileName);
-  return fileName;
+  doc.save(`Abstract_${college}_${department}_Sec${sec}.pdf`);
 };
 export const generateCollegePDF = (college, deptStructure, masterList, getFeedbackFn, calcStatsFn) => {
   const doc = new jsPDF('p', 'mm', 'a4');
