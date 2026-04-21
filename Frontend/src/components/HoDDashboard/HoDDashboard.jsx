@@ -969,8 +969,11 @@ const HoDDashboard = () => {
                     const total = batch.totalStudents  || 0;
                     const pct   = total > 0 ? Math.min(100, Math.round((resp / total) * 100)) : 0;
                     const now   = new Date();
-                    const live  = batch.slotStartDate && batch.slotEndDate
-                      && now >= new Date(batch.slotStartDate) && now <= new Date(batch.slotEndDate);
+                    const endOfDay = batch.slotEndDate
+                      ? new Date(batch.slotEndDate + 'T23:59:59')
+                      : null;
+                    const live  = batch.slotStartDate && endOfDay
+                      && now >= new Date(batch.slotStartDate + 'T00:00:00') && now <= endOfDay;
                     return (
                       <div key={batch.id} className={`lfc ${live ? 'lfc--live' : 'lfc--ended'}`}>
                         <div className="lfc-top">
