@@ -324,11 +324,11 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
 
   // Meta-tags strip — matches .meta-tags chips
   const tags = [
-    `\u{1F4DA} ${department} Department`,
-    `\u{1F393} Year ${year}`,
-    `\u{1F4D6} Semester ${sem}`,
-    `\u{1F3EB} Section ${sec}`,
-    `\u2705 ${totalResponses} Responses`,
+    `${department} Department`,
+    `Year ${year}`,
+    `Semester ${sem}`,
+    `Section ${sec}`,
+    `${totalResponses} Responses`,
   ];
   const tagW = usableW / tags.length;
   doc.setFontSize(7.5);
@@ -350,7 +350,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...DARK);
-  doc.text('Subject \u2014 Faculty Mapping', pageW / 2, y, { align: 'center' });
+  doc.text('Subject - Faculty Mapping', pageW / 2, y, { align: 'center' });
   y += 3;
 
   autoTable(doc, {
@@ -390,7 +390,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...DARK);
   doc.text(
-    '10 = Outstanding  \u2022  9 = Excellent  \u2022  8 = Very Good  \u2022  7 = Good  \u2022  6 = Above Average  \u2022  5 = Average  \u2022  4 = Fair  \u2022  3 = Below Average  \u2022  2 = Poor  \u2022  1 = Very Poor',
+    '10=Outstanding  9=Excellent  8=Very Good  7=Good  6=Above Average  5=Average  4=Fair  3=Below Average  2=Poor  1=Very Poor',
     margin + 28, y + 6.5
   );
   y += 14;
@@ -505,7 +505,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
     doc.setTextColor(12, 74, 110);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('Comments on Each Faculty (Summarized)', pageW / 2, y + 6.8, { align: 'center' });
+    doc.text('Comments on Each Faculty  (Summarized)', pageW / 2, y + 6.8, { align: 'center' });
     y += 14;
 
     suggestions.forEach((s, i) => {
@@ -519,7 +519,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
       doc.setTextColor(30, 64, 175);
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'bold');
-      doc.text(`${i + 1}.  ${s.name}`, margin + 4, y + 5.5);
+      doc.text(`${i + 1}. ${s.name}`, margin + 4, y + 5.5);
       if (s.subject) {
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 116, 139);
@@ -546,7 +546,7 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
     doc.setFontSize(7.5);
     doc.setTextColor(180, 180, 180);
     doc.text(
-      `RISE Feedback Management System \u2014 Abstract Report  |  ${department} \u00B7 Year ${year} \u00B7 Sem ${sem} \u00B7 Sec ${sec} \u00B7 ${totalResponses} Responses  |  Page ${i} of ${pageCount}`,
+      `RISE Feedback Management System - Abstract Report  |  ${department} | Year ${year} | Sem ${sem} | Sec ${sec} | ${totalResponses} Responses  |  Page ${i} of ${pageCount}`,
       pageW / 2, pageH - 5, { align: 'center' }
     );
   }
