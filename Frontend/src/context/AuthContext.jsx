@@ -18,6 +18,7 @@ const USER_CACHE_KEY = 'user';
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reconnecting, setReconnecting] = useState(false);
 
   // ── Silent session restore on page load ──────────────────────────────────
   // FIX (CRITICAL): We no longer read tokens from localStorage.
@@ -26,41 +27,46 @@ export const AuthProvider = ({ children }) => {
   // a fresh access token and store it in module memory only.
   useEffect(() => {
     const restoreSession = async () => {
-      try {
-        // Attempt to get a new access token via the refresh cookie
-        const { data } = await authAPI.refresh();
-        const newAccessToken = data.access_token;
-
-        if (!newAccessToken) {
-          throw new Error('No access token in refresh response');
-        }
-
-        // Store access token in memory (api.js module scope)
-        setAccessToken(newAccessToken);
-
-        // Verify with backend and get fresh user data
-        try {
-          const meResponse = await authAPI.me();
-          if (meResponse.data?.user) {
-            const verifiedUser = meResponse.data.user;
-            sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(verifiedUser));
-            setUser(verifiedUser);
-          }
-        } catch {
-          // Refresh worked but /me failed — use cached profile if available
-          const cached = sessionStorage.getItem(USER_CACHE_KEY) || localStorage.getItem(USER_CACHE_KEY);
-          if (cached) {
-            try { setUser(JSON.parse(cached)); } catch { /* ignore parse error */ }
-          }
-        }
-      } catch {
-        // Refresh failed — no valid session (cookie expired or missing)
-        clearAccessToken();
-        sessionStorage.removeItem(USER_CACHE_KEY);
-        localStorage.removeItem(USER_CACHE_KEY);
-      } finally {
-        setLoading(false);
+      // First, try with cached user so UI loads instantly
+      const cached = localStorage.getItem(USER_CACHE_KEY);
+      if (cached) {
+        try { setUser(JSON.parse(cached)); } catch { /* ignore */ }
       }
+      setLoading(false);
+
+      // Then silently verify session in background with retry for cold start
+      const attemptRefresh = async (attempt = 0) => {
+        try {
+          const { data } = await authAPI.refresh();
+          if (!data.access_token) throw new Error('No token');
+          setAccessToken(data.access_token);
+          try {
+            const meResponse = await authAPI.me();
+            if (meResponse.data?.user) {
+              localStorage.setItem(USER_CACHE_KEY, JSON.stringify(meResponse.data.user));
+              setUser(meResponse.data.user);
+            }
+          } catch {
+            // /me failed but token is valid — keep cached user
+          }
+          setReconnecting(false);
+        } catch (e) {
+          if (!e.response && attempt < 4) {
+            // No response = backend cold starting — show reconnecting UI and retry
+            setReconnecting(true);
+            const delay = [3000, 6000, 10000, 15000][attempt];
+            await new Promise(res => setTimeout(res, delay));
+            return attemptRefresh(attempt + 1);
+          }
+          // Genuinely failed — clear session
+          setReconnecting(false);
+          clearAccessToken();
+          localStorage.removeItem(USER_CACHE_KEY);
+          setUser(null);
+        }
+      };
+
+      attemptRefresh();
     };
 
     restoreSession();
@@ -100,33 +106,27 @@ export const AuthProvider = ({ children }) => {
 
   if (loading) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: '100vh',
-        }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <p>Loading...</p>
       </div>
     );
   }
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loginUser,
-        logoutUser,
-        loading,
-        isAuthenticated,
-      }}
-    >
+    <AuthContext.Provider value={{ user, loginUser, logoutUser, loading, isAuthenticated, reconnecting }}>
+      {reconnecting && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 999999,
+          background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+          color: 'white', textAlign: 'center', padding: '10px',
+          fontSize: '13px', fontWeight: '700', letterSpacing: '0.3px',
+        }}>
+          ⏳ Reconnecting to server — this takes ~30s on first load. Please wait…
+        </div>
+      )}
       {children}
     </AuthContext.Provider>
   );
-};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

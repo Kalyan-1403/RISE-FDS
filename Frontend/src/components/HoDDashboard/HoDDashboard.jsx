@@ -241,7 +241,7 @@ const HoDDashboard = () => {
     }
     loadDashboardData();
     loadSections();
-    pollingRef.current = setInterval(loadDashboardData, 30000);
+    pollingRef.current = setInterval(loadDashboardData, 60000);
     const interval = pollingRef.current;
     const onFocus = () => loadDashboardData();
     window.addEventListener('focus', onFocus);
@@ -737,7 +737,7 @@ const handleDownloadAbstract = async (year, sec) => {
     } finally {
       setIsGeneratingAbstract(false);
       // restart background poll
-      pollingRef.current = setInterval(loadDashboardData, 30000);
+      pollingRef.current = setInterval(loadDashboardData, 60000);
     }
   };
   useEffect(() => {

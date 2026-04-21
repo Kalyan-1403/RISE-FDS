@@ -9,7 +9,7 @@ if (!API_BASE_URL) {
 const api = axios.create({
   baseURL: API_BASE_URL || '',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 20000,
+  timeout: 10000,
   // FIX (CRITICAL): Send httpOnly refresh cookie on cross-origin requests.
   withCredentials: true,
 });
@@ -89,14 +89,11 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      try {
-        // FIX (CRITICAL): The refresh token is now an httpOnly cookie.
-        // The browser sends it automatically with withCredentials=true.
-        // No manual token extraction from localStorage needed.
+    try {
         const { data } = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
-          { withCredentials: true, timeout: 8000 },
+          { withCredentials: true, timeout: 60000 },
         );
 
         const newAccessToken = data.access_token;
@@ -106,12 +103,16 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        forceLogout();
+        // Only force logout if the server explicitly rejected the session
+        // (401/403). A network error or timeout means the server is
+        // temporarily unreachable — do NOT log the user out.
+        if (refreshError.response && (refreshError.response.status === 401 || refreshError.response.status === 403)) {
+          forceLogout();
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
       }
-    }
 
     return Promise.reject(error);
   },
@@ -124,7 +125,7 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
-  refresh: () => api.post('/auth/refresh'),
+  refresh: () => api.post('/auth/refresh', {}, { timeout: 60000 }),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   resetPassword: (data) => api.post('/auth/reset-password', data),
   deleteAccount: (password) => api.delete('/auth/account', { data: { password } }),
