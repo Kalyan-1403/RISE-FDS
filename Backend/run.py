@@ -29,12 +29,25 @@ def seed_admin():
             print('ℹ️ Admin already exists')
 
 
-with app.app_context():
-    db.create_all()
-    seed_admin()
-
 if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
+        seed_admin()
     app.run(
         host="0.0.0.0",
         port=int(os.getenv("PORT", 5000)),
     )
+else:
+    # Running under gunicorn — run migrations once in app context
+    # but don't block worker startup
+    import threading
+    def _init_db():
+        with app.app_context():
+            try:
+                db.create_all()
+                seed_admin()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"DB init failed: {e}")
+    t = threading.Thread(target=_init_db, daemon=True)
+    t.start()

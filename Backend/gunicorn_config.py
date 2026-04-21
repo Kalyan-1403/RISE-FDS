@@ -2,16 +2,15 @@ import multiprocessing
 import os
 
 # Server
-bind = "0.0.0.0:5000"
-workers = multiprocessing.cpu_count() * 2 + 1
-worker_class = "gthread"
-threads = 2
+bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
+workers = 1
+worker_class = "sync"
 timeout = 120
 graceful_timeout = 30
 keepalive = 5
 
 # Performance
-preload_app = True
+preload_app = False
 
 # Logging
 accesslog = "-"
