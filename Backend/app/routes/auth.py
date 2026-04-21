@@ -11,6 +11,7 @@ from flask_jwt_extended import (
     unset_refresh_cookies,
 )
 from datetime import datetime, timedelta, timezone
+from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db, limiter, add_to_blocklist
 from ..models.user import User
