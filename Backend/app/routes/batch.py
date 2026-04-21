@@ -300,18 +300,19 @@ def update_section(section_id):
     db.session.commit()
 
     # Sync total_students on all active batches that match this section
+    # Sync total_students on all active batches that match this section
     if 'strength' in data:
-        matching_batches = Batch.query.filter_by(
-            college=section.college,
-            department=section.department,
-            year=section.year,
-            section=section.section_name,
-            is_active=True,
+        matching_batches = Batch.query.filter(
+            Batch.college == section.college,
+            Batch.department == section.department,
+            Batch.section == section.section_name,
+            Batch.is_active == True,
         ).all()
         for b in matching_batches:
             b.total_students = section.strength
         if matching_batches:
             db.session.commit()
+            logger.info(f"Synced total_students={section.strength} to {len(matching_batches)} batch(es) for section {section.section_name}")
 
     logger.info(f"Section updated: id={section_id} by {user.user_id}")
     return jsonify({"success": True, "section": section.to_dict()}), 200
