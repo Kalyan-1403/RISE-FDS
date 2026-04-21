@@ -8,52 +8,51 @@ logger = logging.getLogger(__name__)
 
 
 def require_auth(fn):
-    """Middleware to require a valid JWT token and load the active user.
-    Token revocation (blocklist) is checked automatically by the
-    @jwt.token_in_blocklist_loader registered in app/__init__.py.
-    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
+        # Step 1: Verify JWT — if this fails it's a real auth error
         try:
             verify_jwt_in_request()
+        except Exception as e:
+            logger.warning(f"JWT verification failed for {request.path}: {e}")
+            return jsonify({"error": "Authentication required", "code": "INVALID_TOKEN"}), 401
+        # Step 2: Load user from DB — if this fails it's a DB error, not auth
+        try:
             user_id = get_jwt_identity()
-
             user = User.query.filter_by(user_id=user_id, is_active=True).first()
             if not user:
                 return jsonify({"error": "User account not found or deactivated", "code": "INVALID_TOKEN"}), 401
-
             g.current_user = user
             return fn(*args, **kwargs)
         except Exception as e:
-            logger.warning(f"Auth failed for {request.path}: {e}")
-            return jsonify({"error": "Authentication required", "code": "INVALID_TOKEN"}), 401
+            logger.error(f"DB error during auth for {request.path}: {e}")
+            return jsonify({"error": "Service temporarily unavailable", "code": "DB_ERROR"}), 503
     return wrapper
 
 
 def require_role(allowed_roles):
-    """Middleware to enforce Role-Based Access Control (RBAC).
-    Token revocation (blocklist) is checked automatically by the
-    @jwt.token_in_blocklist_loader registered in app/__init__.py.
-    """
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
+            # Step 1: Verify JWT
             try:
                 verify_jwt_in_request()
+            except Exception as e:
+                logger.warning(f"JWT verification failed for {request.path}: {e}")
+                return jsonify({"error": "Authentication required", "code": "INVALID_TOKEN"}), 401
+            # Step 2: Load user + check role
+            try:
                 user_id = get_jwt_identity()
-
                 user = User.query.filter_by(user_id=user_id, is_active=True).first()
                 if not user:
                     return jsonify({"error": "User account not found or deactivated", "code": "INVALID_TOKEN"}), 401
-
                 if user.role not in allowed_roles:
                     logger.warning(f"RBAC denied: user={user_id}, role={user.role}, required={allowed_roles}")
                     return jsonify({"error": "Access forbidden: insufficient permissions"}), 403
-
                 g.current_user = user
                 return fn(*args, **kwargs)
             except Exception as e:
-                logger.warning(f"Auth failed for {request.path}: {e}")
-                return jsonify({"error": "Authentication required", "code": "INVALID_TOKEN"}), 401
+                logger.error(f"DB error during auth for {request.path}: {e}")
+                return jsonify({"error": "Service temporarily unavailable", "code": "DB_ERROR"}), 503
         return wrapper
     return decorator

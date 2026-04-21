@@ -69,6 +69,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // 503 = DB temporarily down — don't logout, just fail silently
+    if (error.response?.status === 503) {
+      return Promise.reject(error);
+    }
+
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
