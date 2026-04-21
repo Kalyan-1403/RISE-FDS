@@ -678,11 +678,21 @@ const HoDDashboard = () => {
   };
 
   /* ── Abstract PDF download ── */
-  const handleDownloadAbstract = async (year, sec) => {
-    const secFaculty = assignedFaculty.filter(f => f.year === year && f.sec === sec);
-    if (!secFaculty.length) { showToast('No assigned faculty for this section.'); return; }
+ const handleDownloadAbstract = async (year, sec) => {
+    // Get the actual batch published for this year/sec so we use exactly
+    // the faculty that were included in that published link
+    const batch = allBatches.find(b =>
+      b.year === year && (b.sec === sec || b.section === sec)
+    );
+    if (!batch) { showToast('No published batch found for this section.'); return; }
+
+    // Fetch full batch with faculty list (list endpoint is lightweight, get_batch has faculty)
     setIsGeneratingAbstract(true);
     try {
+      const fullBatch = await dataService.getBatch(batch.batch_id || batch.batchId);
+      const secFaculty = fullBatch?.faculty || [];
+      if (!secFaculty.length) { showToast('No faculty found in this published batch.'); setIsGeneratingAbstract(false); return; }
+
       const facultyWithStats = await Promise.all(secFaculty.map(async f => {
         const stats = await dataService.getFacultyStats(f.id);
         return { faculty: f, stats };
