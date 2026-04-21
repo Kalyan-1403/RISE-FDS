@@ -10,7 +10,7 @@ from flask_jwt_extended import (
     set_refresh_cookies,
     unset_refresh_cookies,
 )
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ..extensions import db, limiter, add_to_blocklist
 from ..models.user import User
@@ -194,7 +194,7 @@ def forgot_password():
 
     otp = str(secrets.randbelow(900000) + 100000)
     user.reset_otp = otp
-    user.reset_otp_expiry = datetime.utcnow() + timedelta(minutes=10)
+    user.reset_otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
     db.session.commit()
 
     delivered = send_otp_email(user.email, user.user_id, otp)
@@ -223,7 +223,7 @@ def reset_password():
     if not user or not user.reset_otp or user.reset_otp != otp:
         return jsonify({"error": "Invalid User ID or OTP"}), 400
 
-    if user.reset_otp_expiry and datetime.utcnow() > user.reset_otp_expiry:
+    if user.reset_otp_expiry and datetime.now(timezone.utc) > user.reset_otp_expiry.replace(tzinfo=timezone.utc):
         user.reset_otp = None
         user.reset_otp_expiry = None
         db.session.commit()
@@ -284,10 +284,12 @@ def delete_account():
     jti = get_jwt()["jti"]
     add_to_blocklist(jti)
 
+    # Extract college/dept before the role check to avoid NameError in the log below
+    college = user.college or ''
+    department = user.department or ''
+
     if user.role == 'hod':
         # HoD: delete credentials + all department data
-        college = user.college
-        department = user.department
         batches = Batch.query.filter_by(college=college, department=department).all()
         for batch in batches:
             db.session.delete(batch)
@@ -296,8 +298,13 @@ def delete_account():
             db.session.delete(f)
     # Admin roles (Principal/Director/Chairman): delete credentials only — data is preserved
 
-    db.session.delete(user)
-    db.session.commit()
+    try:
+        db.session.delete(user)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Failed to delete account {user_id}: {e}")
+        return jsonify({"error": "Failed to delete account. Please try again."}), 500
 
     response = make_response(jsonify({
         "success": True,

@@ -122,9 +122,8 @@ const login = async (loginData) => {
     );
     if (response.data.success) {
       setAccessToken(response.data.access_token);
-      // User profile cached per-tab in sessionStorage (not localStorage)
-      // so different tabs can have different logged-in accounts simultaneously
-      sessionStorage.setItem('user', JSON.stringify(response.data.user));
+      // Write to localStorage so AuthContext.restoreSession can find the profile on page refresh
+      localStorage.setItem('user', JSON.stringify(response.data.user));
     }
     setBackendStatus(true);
     return response.data;

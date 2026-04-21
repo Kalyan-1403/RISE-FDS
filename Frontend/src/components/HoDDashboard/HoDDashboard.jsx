@@ -304,7 +304,8 @@ const HoDDashboard = () => {
     if (!downloadYear) return [];
     return (sectionsByKey[downloadYear] || []).filter(s => {
       const batch = allBatches.find(b => b.year === downloadYear && (b.sec === s.sectionName || b.section === s.sectionName));
-      return batch && batch.totalStudents > 0 && (batch.responseCount || 0) >= batch.totalStudents;
+      // Show section if there is a published batch with at least one response
+      return batch && (batch.responseCount || 0) > 0;
     });
   }, [downloadYear, sectionsByKey, allBatches]);
 
@@ -736,7 +737,8 @@ const handleDownloadAbstract = async (year, sec) => {
       showToast('Failed to generate abstract.');
     } finally {
       setIsGeneratingAbstract(false);
-      // restart background poll
+      // Clear any existing interval before starting a new one to prevent accumulation
+      if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(loadDashboardData, 60000);
     }
   };

@@ -1,6 +1,6 @@
 import logging
 from flask import Blueprint, request, jsonify, g, current_app
-from datetime import datetime
+from datetime import datetime, timezone
 from ..extensions import db
 from ..models.batch import Batch, BatchFaculty
 from ..models.faculty import Faculty
@@ -64,7 +64,7 @@ def create_batch():
         return jsonify({"error": "Slot must be a number"}), 400
 
     # Generate a unique Batch ID
-    batch_id = f"{college}-{department}-{branch}-{year}-{semester}-{section}-{int(datetime.utcnow().timestamp())}"
+    batch_id = f"{college}-{department}-{branch}-{year}-{semester}-{section}-{int(datetime.now(timezone.utc).timestamp())}"
 
     # Parse dates safely
     start_date = None

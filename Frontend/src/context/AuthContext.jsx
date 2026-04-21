@@ -82,7 +82,8 @@ export const AuthProvider = ({ children }) => {
     if (accessToken) {
       setAccessToken(accessToken);
     }
-    sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData));
+    // Write to localStorage so restoreSession can find the cache on page refresh
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(userData));
     setUser(userData);
   }, []);
 
@@ -94,7 +95,6 @@ export const AuthProvider = ({ children }) => {
       // Even if the server call fails, clear client state
     } finally {
       clearAccessToken();
-      sessionStorage.removeItem(USER_CACHE_KEY);
       localStorage.removeItem(USER_CACHE_KEY);
       setUser(null);
       // Hard redirect — clears all in-memory state and forces login page
