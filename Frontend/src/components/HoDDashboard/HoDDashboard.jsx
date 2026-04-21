@@ -679,7 +679,6 @@ const HoDDashboard = () => {
 
   /* ── Abstract PDF download ── */
 const handleDownloadAbstract = async (year, sec) => {
-    // 1. Find the target batch from the dashboard list
     const targetBatch = allBatches.find(b =>
       b.year === year && (b.sec === sec || b.section === sec)
     );
@@ -691,16 +690,9 @@ const handleDownloadAbstract = async (year, sec) => {
 
     setIsGeneratingAbstract(true);
     try {
-      // FIX: Check for standard 'id' first, then fallbacks.
       const fetchId = targetBatch.id || targetBatch.batch_id || targetBatch.batchId;
-      
-      if (!fetchId) {
-        showToast('Error: Batch ID is missing.');
-        setIsGeneratingAbstract(false);
-        return;
-      }
+      if (!fetchId) { showToast('Error: Batch ID is missing.'); setIsGeneratingAbstract(false); return; }
 
-      // 2. Fetch the full batch details from the database
       const fullBatch = await dataService.getBatch(fetchId);
       const secFaculty = fullBatch?.faculty || [];
 
@@ -710,7 +702,6 @@ const handleDownloadAbstract = async (year, sec) => {
         return;
       }
 
-      // 3. Map EVERY faculty member safely
       const facultyWithStats = await Promise.all(secFaculty.map(async (f) => {
         try {
           const rawStats = await dataService.getFacultyStats(f.id);
@@ -720,10 +711,21 @@ const handleDownloadAbstract = async (year, sec) => {
 
           if (sd && sd.responseCount > 0) {
             const dist = sd.ratingDistribution || {};
-            // Calculate Positive (7-10) and Negative (1-6)
-            sentiment.pos = (dist['10'] || 0) + (dist['9'] || 0) + (dist['8'] || 0) + (dist['7'] || 0);
-            sentiment.total = sd.responseCount;
-            sentiment.neg = sentiment.total - sentiment.pos;
+            // Sum all positive ratings (7-10)
+            const posParamRatings = (dist['10'] || 0) + (dist['9'] || 0) + (dist['8'] || 0) + (dist['7'] || 0);
+            
+            // Total ratings given (should be around responseCount * 15)
+            const totalParamRatings = Object.values(dist).reduce((sum, val) => sum + val, 0);
+            const totalStudents = sd.responseCount;
+
+            // Normalize the parameter counts back to a "Student Count"
+            if (totalParamRatings > 0) {
+               const positiveRatio = posParamRatings / totalParamRatings;
+               sentiment.pos = Math.round(positiveRatio * totalStudents);
+            }
+
+            sentiment.total = totalStudents;
+            sentiment.neg = totalStudents - sentiment.pos;
 
             if (sd.parameterStats && Object.keys(sd.parameterStats).length > 0) {
               const sorted = Object.entries(sd.parameterStats).sort(([, a], [, b]) => a.average - b.average);
@@ -731,7 +733,6 @@ const handleDownloadAbstract = async (year, sec) => {
               sentiment.top = sorted[sorted.length - 1]?.[0] || 'N/A';
             }
           }
-          
           return { faculty: f, stats: sd, sentiment };
         } catch (err) {
           console.error(`Failed to fetch stats for ${f.name}`, err);
@@ -739,7 +740,6 @@ const handleDownloadAbstract = async (year, sec) => {
         }
       }));
 
-      // 4. Generate the PDF
       generateAbstractPDF(
         currentUser.college,
         currentUser.department,
@@ -754,7 +754,6 @@ const handleDownloadAbstract = async (year, sec) => {
       setIsGeneratingAbstract(false);
     }
   };
-
   useEffect(() => {
     localStorage.setItem('academicYear', academicYear);
   }, [academicYear]);

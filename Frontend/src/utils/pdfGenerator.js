@@ -243,17 +243,11 @@ export const generateDepartmentPDF = (deptKey, facultyList, allStats, collegeNam
 };
 
 export const generateAbstractPDF = (college, department, sectionInfo, facultyWithStats) => {
-  const doc = new jsPDF('l', 'mm', 'a4'); // 'l' = landscape
+  const doc = new jsPDF('l', 'mm', 'a4'); 
   const { year, sem, sec } = sectionInfo;
   const pageW = doc.internal.pageSize.getWidth();
 
-  // Guard against empty data to prevent invisible crashes
-  if (!facultyWithStats || facultyWithStats.length === 0) {
-    doc.setFontSize(12);
-    doc.text("No Faculty Data Available.", 14, 20);
-    doc.save(`Abstract_${college}_${department}_Sec${sec}_Error.pdf`);
-    return;
-  }
+  if (!facultyWithStats || facultyWithStats.length === 0) return;
 
   // --- PAGE 1: PERFORMANCE MATRIX ---
   doc.setFillColor(255, 107, 157);
@@ -271,23 +265,24 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
 
   let y = 42;
 
-  // Build Headers: S.No, Parameters, [Faculty 1], [Faculty 2], ...
+  // Add line breaks to long subjects so they don't stretch the columns
+  const formatHeader = (text) => text ? text.replace(' & ', ' &\n') : 'Unknown';
+
   const tableHead = [
-    ['S.No', 'Parameters', ...facultyWithStats.map(item => item.faculty?.subject || item.faculty?.name || 'Unknown')]
+    ['S.No', 'Parameters', ...facultyWithStats.map(item => formatHeader(item.faculty?.subject || item.faculty?.name))]
   ];
 
-  // Build Rows: 1 to 15
   const tableBody = PARAMETERS.map((param, idx) => [
     (idx + 1).toString(),
     param,
     ...facultyWithStats.map(item => {
-      return item.stats?.parameterStats?.[param] ? item.stats.parameterStats[param].average.toFixed(1) : '—';
+      // FIX: Use standard hyphen '-', not em-dash
+      return item.stats?.parameterStats?.[param] ? item.stats.parameterStats[param].average.toFixed(1) : '-';
     })
   ]);
 
-  // Add Footer Rows for Overalls and Totals
   tableBody.push(['', 'OVERALL AVERAGE', ...facultyWithStats.map(item => {
-    return item.stats?.overallAverage ? parseFloat(item.stats.overallAverage).toFixed(2) : '—';
+    return item.stats?.overallAverage ? parseFloat(item.stats.overallAverage).toFixed(2) : '-';
   })]);
 
   tableBody.push(['', 'TOTAL RESPONSES', ...facultyWithStats.map(item => {
@@ -299,14 +294,13 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
     head: tableHead,
     body: tableBody,
     theme: 'grid',
-    styles: { fontSize: 7.5, cellPadding: 1.5, valign: 'middle' },
-    headStyles: { fillColor: [139, 92, 246], textColor: [255, 255, 255], halign: 'center' },
+    styles: { fontSize: 7.5, cellPadding: 1.5, valign: 'middle', halign: 'center' },
+    headStyles: { fillColor: [139, 92, 246], textColor: [255, 255, 255] },
     columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 78 } // Locks width so all 15 strings fit without wrapping too much
+      0: { cellWidth: 10 },
+      1: { cellWidth: 70, halign: 'left' } // Keep parameter text left-aligned
     },
     didParseCell: (data) => {
-      // Highlight the Average and Response rows
       if (data.row.index >= PARAMETERS.length && data.section === 'body') {
         data.cell.styles.fillColor = [240, 249, 255];
         data.cell.styles.fontStyle = 'bold';
@@ -342,13 +336,15 @@ export const generateAbstractPDF = (college, department, sectionInfo, facultyWit
     styles: { fontSize: 9.5, cellPadding: 5, lineHeight: 1.4 },
     headStyles: { fillColor: [255, 107, 157], textColor: [255, 255, 255] },
     columnStyles: {
-      0: { cellWidth: 55, fontStyle: 'bold', fillColor: [248, 250, 252] },
+      0: { cellWidth: 60, fontStyle: 'bold', fillColor: [248, 250, 252] },
       1: { cellWidth: 'auto' }
     }
   });
 
   doc.save(`Abstract_${college}_${department}_Sec${sec}.pdf`);
 };
+
+
 export const generateCollegePDF = (college, deptStructure, masterList, getFeedbackFn, calcStatsFn) => {
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
