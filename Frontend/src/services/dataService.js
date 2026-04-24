@@ -2,6 +2,7 @@ import {
   authAPI,
   facultyAPI,
   batchAPI,
+  sectionAPI,
   feedbackAPI,
   dashboardAPI,
   reportsAPI,
@@ -9,7 +10,6 @@ import {
 } from './api.js';
 
 const DEPT_STRUCTURE_KEY = 'deptStructure';
-const MASTER_FACULTY_KEY = 'masterFacultyList';
 
 const DEFAULT_DEPT_STRUCTURE = {
   Gandhi: {
@@ -26,67 +26,40 @@ const DEFAULT_DEPT_STRUCTURE = {
 };
 
 let backendOnline = true;
-const setBackendStatus = (s) => {
-  backendOnline = s;
-};
+const setBackendStatus = (s) => { backendOnline = s; };
 const isOffline = () => !backendOnline;
 
 const getDeptStructure = () => {
   try {
-    const saved = localStorage.getItem(
-      DEPT_STRUCTURE_KEY
-    );
+    const saved = localStorage.getItem(DEPT_STRUCTURE_KEY);
     if (saved) return JSON.parse(saved);
   } catch (e) { /* ignore */ }
-  localStorage.setItem(
-    DEPT_STRUCTURE_KEY,
-    JSON.stringify(DEFAULT_DEPT_STRUCTURE)
-  );
+  localStorage.setItem(DEPT_STRUCTURE_KEY, JSON.stringify(DEFAULT_DEPT_STRUCTURE));
   return DEFAULT_DEPT_STRUCTURE;
 };
 
 const saveDeptStructure = (structure) => {
-  localStorage.setItem(
-    DEPT_STRUCTURE_KEY,
-    JSON.stringify(structure)
-  );
+  localStorage.setItem(DEPT_STRUCTURE_KEY, JSON.stringify(structure));
 };
 
-const addDepartment = async (
-  college, deptName, branches = null
-) => {
+const addDepartment = async (college, deptName, branches = null) => {
   try {
-    await dashboardAPI.addDepartment({
-      college, deptName, branches,
-    });
+    await dashboardAPI.addDepartment({ college, deptName, branches });
     setBackendStatus(true);
   } catch (e) {
     setBackendStatus(false);
   }
   const structure = getDeptStructure();
-  if (!structure[college])
-    return {
-      success: false,
-      error: `College "${college}" not found`,
-    };
-  if (structure[college][deptName])
-    return {
-      success: false,
-      error: `"${deptName}" already exists`,
-    };
-  structure[college][deptName] =
-    branches || null;
+  if (!structure[college]) return { success: false, error: `College "${college}" not found` };
+  if (structure[college][deptName]) return { success: false, error: `"${deptName}" already exists` };
+  structure[college][deptName] = branches || null;
   saveDeptStructure(structure);
   return { success: true };
 };
 
-const deleteDepartment = async (
-  college, dept
-) => {
+const deleteDepartment = async (college, dept) => {
   try {
-    await dashboardAPI.deleteDepartment(
-      college, dept
-    );
+    await dashboardAPI.deleteDepartment(college, dept);
     setBackendStatus(true);
   } catch (e) {
     setBackendStatus(false);
@@ -114,27 +87,25 @@ const deleteCollege = async (college) => {
   return { success: true };
 };
 
-// AUTH
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+
 const login = async (loginData) => {
   try {
-    const response = await authAPI.login(
-      loginData
-    );
+    const response = await authAPI.login(loginData);
     if (response.data.success) {
       setAccessToken(response.data.access_token);
-      // User profile cached per-tab in sessionStorage (not localStorage)
-      // so different tabs can have different logged-in accounts simultaneously
-      sessionStorage.setItem('user', JSON.stringify(response.data.user));
+      // FIX: Removed redundant sessionStorage.setItem('user', ...) write.
+      // AuthContext.loginUser() is responsible for persisting the user profile
+      // to localStorage and updating React state. Writing to sessionStorage here
+      // created a diverging secondary cache that was never read back, causing
+      // stale data to persist across logouts in the same browser tab.
     }
     setBackendStatus(true);
     return response.data;
   } catch (error) {
     if (error.response) {
       setBackendStatus(true);
-      throw new Error(
-        error.response.data.error ||
-          'Login failed'
-      );
+      throw new Error(error.response.data.error || 'Login failed');
     }
     setBackendStatus(false);
     throw new Error('Cannot connect to server.');
@@ -147,13 +118,7 @@ const register = async (data) => {
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(
-        e.response.data.error ||
-          'Registration failed'
-      );
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Registration failed'); }
     setBackendStatus(false);
     throw new Error('Cannot connect to server.');
   }
@@ -165,12 +130,7 @@ const forgotPassword = async (data) => {
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(
-        e.response.data.error || 'Failed'
-      );
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed'); }
     setBackendStatus(false);
     throw new Error('Cannot connect.');
   }
@@ -182,10 +142,7 @@ const registerAdmin = async (data) => {
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(e.response.data.error || 'Registration failed');
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Registration failed'); }
     setBackendStatus(false);
     throw new Error('Cannot connect to server.');
   }
@@ -197,10 +154,7 @@ const deleteAccount = async (password) => {
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(e.response.data.error || 'Failed to delete account');
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to delete account'); }
     setBackendStatus(false);
     throw new Error('Cannot connect to server.');
   }
@@ -212,18 +166,38 @@ const resetPassword = async (data) => {
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(
-        e.response.data.error || 'Failed'
-      );
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed'); }
     setBackendStatus(false);
     throw new Error('Cannot connect.');
   }
 };
 
-// FACULTY
+const updateProfile = async (data) => {
+  try {
+    const r = await authAPI.updateProfile(data);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to update profile'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
+
+const changePassword = async (data) => {
+  try {
+    const r = await authAPI.changePassword(data);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to change password'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
+
+// ─── FACULTY ──────────────────────────────────────────────────────────────────
+
 const getAllFaculty = async () => {
   try {
     const r = await facultyAPI.getAll();
@@ -241,13 +215,7 @@ const createFaculty = async (data) => {
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(
-        e.response.data.error ||
-          'Failed to create'
-      );
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to create'); }
     setBackendStatus(false);
     throw new Error('Cannot connect.');
   }
@@ -259,13 +227,7 @@ const updateFaculty = async (id, data) => {
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(
-        e.response.data.error ||
-          'Failed to update'
-      );
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to update'); }
     setBackendStatus(false);
     throw new Error('Cannot connect.');
   }
@@ -277,32 +239,73 @@ const deleteFacultyById = async (id) => {
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(
-        e.response.data.error ||
-          'Failed to delete'
-      );
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to delete'); }
     setBackendStatus(false);
     throw new Error('Cannot connect.');
   }
 };
 
-// BATCH
+// ─── SECTIONS ─────────────────────────────────────────────────────────────────
+// FIX: These functions were missing from dataService entirely. sectionAPI was
+// defined in api.js but never wrapped here, making section management inaccessible
+// to any component going through the service layer.
+
+const getSections = async () => {
+  try {
+    const r = await sectionAPI.getAll();
+    setBackendStatus(true);
+    return r.data.sections;
+  } catch (e) {
+    setBackendStatus(false);
+    return [];
+  }
+};
+
+const createSection = async (data) => {
+  try {
+    const r = await sectionAPI.create(data);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to create section'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
+
+const updateSection = async (id, data) => {
+  try {
+    const r = await sectionAPI.update(id, data);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to update section'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
+
+const deleteSection = async (id) => {
+  try {
+    const r = await sectionAPI.delete(id);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to delete section'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
+
+// ─── BATCH ────────────────────────────────────────────────────────────────────
+
 const createBatch = async (data) => {
   try {
     const r = await batchAPI.create(data);
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(
-        e.response.data.error ||
-          'Failed to create batch'
-      );
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to create batch'); }
     setBackendStatus(false);
     throw new Error('Cannot connect.');
   }
@@ -342,20 +345,15 @@ const revokeBatch = async (batchId) => {
   }
 };
 
-// FEEDBACK
+// ─── FEEDBACK ─────────────────────────────────────────────────────────────────
+
 const submitFeedback = async (data) => {
   try {
     const r = await feedbackAPI.submit(data);
     setBackendStatus(true);
     return r.data;
   } catch (e) {
-    if (e.response) {
-      setBackendStatus(true);
-      throw new Error(
-        e.response.data.error ||
-          'Failed to submit'
-      );
-    }
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to submit'); }
     setBackendStatus(false);
     throw new Error('Cannot connect.');
   }
@@ -363,10 +361,7 @@ const submitFeedback = async (data) => {
 
 const getFacultyStats = async (facultyId) => {
   try {
-    const r =
-      await feedbackAPI.getFacultyStats(
-        facultyId
-      );
+    const r = await feedbackAPI.getFacultyStats(facultyId);
     setBackendStatus(true);
     return r.data.stats;
   } catch (e) {
@@ -385,86 +380,42 @@ const getMultiFacultyStats = async (facultyIds) => {
     return null;
   }
 };
-// DELETE RESPONSES — via BACKEND
-const deleteFacultyFeedback = async (
-  facultyId
-) => {
+
+const deleteFacultyFeedback = async (facultyId) => {
   try {
-    const r =
-      await feedbackAPI.deleteFacultyResponses(
-        facultyId
-      );
+    const r = await feedbackAPI.deleteFacultyResponses(facultyId);
     setBackendStatus(true);
     return r.data;
   } catch (e) {
     setBackendStatus(false);
-    throw new Error(
-      'Failed to delete responses'
-    );
+    throw new Error('Failed to delete responses');
   }
 };
 
-const deleteDepartmentFeedback = async (
-  college, dept
-) => {
+const deleteDepartmentFeedback = async (college, dept) => {
   try {
-    const r =
-      await feedbackAPI.deleteDepartmentResponses(
-        college, dept
-      );
+    const r = await feedbackAPI.deleteDepartmentResponses(college, dept);
     setBackendStatus(true);
     return r.data;
   } catch (e) {
     setBackendStatus(false);
-    throw new Error(
-      'Failed to delete responses'
-    );
+    throw new Error('Failed to delete responses');
   }
 };
 
-const deleteCollegeFeedback = async (
-  college
-) => {
+const deleteCollegeFeedback = async (college) => {
   try {
-    const r =
-      await feedbackAPI.deleteCollegeResponses(
-        college
-      );
+    const r = await feedbackAPI.deleteCollegeResponses(college);
     setBackendStatus(true);
     return r.data;
   } catch (e) {
     setBackendStatus(false);
-    throw new Error(
-      'Failed to delete responses'
-    );
+    throw new Error('Failed to delete responses');
   }
 };
 
-const updateProfile = async (data) => {
-  try {
-    const r = await authAPI.updateProfile(data);
-    setBackendStatus(true);
-    return r.data;
-  } catch (e) {
-    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to update profile'); }
-    setBackendStatus(false);
-    throw new Error('Cannot connect.');
-  }
-};
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
 
-const changePassword = async (data) => {
-  try {
-    const r = await authAPI.changePassword(data);
-    setBackendStatus(true);
-    return r.data;
-  } catch (e) {
-    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to change password'); }
-    setBackendStatus(false);
-    throw new Error('Cannot connect.');
-  }
-};
-
-// DASHBOARD
 const getAdminDashboard = async () => {
   try {
     const r = await dashboardAPI.getAdmin();
@@ -487,20 +438,16 @@ const getHoDDashboard = async () => {
   }
 };
 
-// REPORTS
-const getFacultyReportData = async (
-  facultyId
-) => {
+// ─── REPORTS ──────────────────────────────────────────────────────────────────
+
+const getFacultyReportData = async (facultyId) => {
   try {
-    const r = await reportsAPI.getFacultyData(
-      facultyId
-    );
+    const r = await reportsAPI.getFacultyData(facultyId);
     setBackendStatus(true);
     const rawData = r.data.data || [];
     const submissionMap = {};
     rawData.forEach((item) => {
-      const key =
-        `${item.submittedAt}_${item.slot}`;
+      const key = `${item.submittedAt}_${item.slot}`;
       if (!submissionMap[key]) {
         submissionMap[key] = {
           timestamp: item.submittedAt,
@@ -509,9 +456,7 @@ const getFacultyReportData = async (
           comments: item.comments || '',
         };
       }
-      submissionMap[key].ratings[
-        item.parameter
-      ] = item.rating;
+      submissionMap[key].ratings[item.parameter] = item.rating;
     });
     return Object.values(submissionMap);
   } catch (e) {
@@ -520,37 +465,50 @@ const getFacultyReportData = async (
   }
 };
 
+// ─── Exports ──────────────────────────────────────────────────────────────────
+
 const dataService = {
   isOffline,
   getDeptStructure,
   addDepartment,
   deleteDepartment,
   deleteCollege,
+  // Auth
   login,
   register,
   registerAdmin,
   forgotPassword,
   resetPassword,
   deleteAccount,
+  updateProfile,
+  changePassword,
+  // Faculty
   getAllFaculty,
   createFaculty,
   updateFaculty,
   deleteFacultyById,
+  // Sections (FIX: previously missing)
+  getSections,
+  createSection,
+  updateSection,
+  deleteSection,
+  // Batches
   createBatch,
   getBatch,
   listBatches,
+  revokeBatch,
+  // Feedback
   submitFeedback,
   getFacultyStats,
   getMultiFacultyStats,
   deleteFacultyFeedback,
   deleteDepartmentFeedback,
   deleteCollegeFeedback,
+  // Dashboard
   getAdminDashboard,
   getHoDDashboard,
+  // Reports
   getFacultyReportData,
-  revokeBatch,
-  updateProfile,
-  changePassword,
 };
 
 export default dataService;

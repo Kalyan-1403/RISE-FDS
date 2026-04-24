@@ -48,6 +48,31 @@ def create_faculty():
     doc_ref.set(new_faculty)
 
     return jsonify({"success": True, "faculty": Faculty.to_dict(doc_ref.id, new_faculty)}), 201
+@faculty_bp.route('/<faculty_id>', methods=['PUT'])
+@require_role(['hod', 'admin'])
+def update_faculty(faculty_id):
+    user = g.current_user
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body required"}), 400
+
+    doc_ref = db.collection(Faculty.COLLECTION).document(faculty_id)
+    doc = doc_ref.get()
+    if not doc.exists or not doc.to_dict().get('is_active'):
+        return jsonify({"error": "Faculty not found"}), 404
+
+    updates = {}
+    for field in ['name', 'subject', 'year', 'branch']:
+        if field in data:
+            updates[field] = sanitize_string(str(data[field]), 200)
+    if 'sem' in data:
+        updates['semester'] = sanitize_string(str(data['sem']), 10)
+    if 'sec' in data:
+        updates['section'] = sanitize_string(str(data['sec']), 20)
+
+    doc_ref.update(updates)
+    updated = {**doc.to_dict(), **updates}
+    return jsonify({"success": True, "faculty": Faculty.to_dict(faculty_id, updated)}), 200
 
 @faculty_bp.route('/<faculty_id>', methods=['DELETE'])
 @require_role(['hod', 'admin'])

@@ -10,13 +10,13 @@ const api = axios.create({
   baseURL: API_BASE_URL || '',
   headers: { 'Content-Type': 'application/json' },
   timeout: 10000,
-  // FIX (CRITICAL): Send httpOnly refresh cookie on cross-origin requests.
+  // Send httpOnly refresh cookie on cross-origin requests.
   withCredentials: true,
 });
 
 // ─── In-Memory Access Token Store ────────────────────────────────────────────
 //
-// FIX (CRITICAL): Access token is now stored in module memory, NOT localStorage.
+// Access token is stored in module memory, NOT localStorage.
 // localStorage is readable by any JavaScript on the page (XSS risk).
 // Memory storage means the token is cleared on page refresh — that's intentional.
 // Session is restored transparently via the httpOnly refresh cookie on page load
@@ -57,10 +57,13 @@ const processQueue = (error, token = null) => {
 };
 
 const forceLogout = () => {
+  // FIX: Removed stale localStorage.removeItem('access_token') and
+  // localStorage.removeItem('refresh_token') — those keys are never stored
+  // in the new implementation (access token is in-memory, refresh token is
+  // an httpOnly cookie set by the backend). Only the user profile cache key
+  // needs to be cleared here.
   clearAccessToken();
   localStorage.removeItem('user');
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
   window.location.href = '/';
 };
 
@@ -94,7 +97,7 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-    try {
+      try {
         const { data } = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
@@ -111,7 +114,10 @@ api.interceptors.response.use(
         // Only force logout if the server explicitly rejected the session
         // (401/403). A network error or timeout means the server is
         // temporarily unreachable — do NOT log the user out.
-        if (refreshError.response && (refreshError.response.status === 401 || refreshError.response.status === 403)) {
+        if (
+          refreshError.response &&
+          (refreshError.response.status === 401 || refreshError.response.status === 403)
+        ) {
           forceLogout();
         }
         return Promise.reject(refreshError);
@@ -160,11 +166,14 @@ export const sectionAPI = {
   update: (id, data) => api.put(`/batch/sections/${id}`, data),
   delete: (id) => api.delete(`/batch/sections/${id}`),
 };
+
 export const feedbackAPI = {
   submit: (data) => api.post('/feedback/submit', data),
   getFacultyStats: (facultyId) => api.get(`/feedback/faculty/${facultyId}/stats`),
-  getMultiFacultyStats: (facultyIds) => api.post('/feedback/faculty/stats/multi', { faculty_ids: facultyIds }),
-  deleteFacultyResponses: (facultyId) => api.delete(`/feedback/faculty/${facultyId}/responses`),
+  getMultiFacultyStats: (facultyIds) =>
+    api.post('/feedback/faculty/stats/multi', { faculty_ids: facultyIds }),
+  deleteFacultyResponses: (facultyId) =>
+    api.delete(`/feedback/faculty/${facultyId}/responses`),
   deleteDepartmentResponses: (college, dept) =>
     api.delete('/feedback/department/responses', { data: { college, dept } }),
   deleteCollegeResponses: (college) =>
@@ -188,10 +197,5 @@ export const reportsAPI = {
 export const healthAPI = {
   check: () => api.get('/health'),
 };
-
-// FIX (HIGH): Removed the broken fetchAISummary function.
-// The /api/ai/summarize backend route was never implemented, causing silent 404s
-// in production. Re-add this when the backend route is properly built and
-// secured with JWT authentication.
 
 export default api;

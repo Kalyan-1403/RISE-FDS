@@ -105,4 +105,74 @@ def get_faculty_stats(faculty_id):
             'responseCount': len(all_ratings) // len(params) if params else 0
         }
 
-    return jsonify({"stats": {"totalResponses": total_submissions, **result}}), 200
+    stats_response = {
+        "totalResponses": total_submissions,
+        "hasSlot1": 1 in slot_data,
+        "hasSlot2": 2 in slot_data,
+    }
+    if 1 in slot_data:
+        stats_response["slot1"] = result.get("slot1", {})
+    if 2 in slot_data:
+        stats_response["slot2"] = result.get("slot2", {})
+
+    return jsonify({"stats": stats_response}), 200
+@feedback_bp.route('/faculty/stats/multi', methods=['POST'])
+@require_role(['hod', 'admin'])
+def get_multi_faculty_stats():
+    data = request.get_json()
+    faculty_ids = data.get('faculty_ids', [])
+    results = {}
+    for fid in faculty_ids:
+        query = db.collection(FeedbackSubmission.COLLECTION).where(f'ratings.{fid}', '!=', None)
+        slot_data = {}
+        total = 0
+        for sub in query.stream():
+            s = sub.to_dict()
+            slot = s.get('slot', 1)
+            fac_ratings = s.get('ratings', {}).get(fid, {})
+            if not fac_ratings:
+                continue
+            total += 1
+            if slot not in slot_data:
+                slot_data[slot] = {}
+            for param, rating in fac_ratings.items():
+                slot_data[slot].setdefault(param, []).append(rating)
+        if total > 0:
+            results[fid] = {"totalResponses": total, "hasSlot1": 1 in slot_data, "hasSlot2": 2 in slot_data}
+    return jsonify({"stats": results}), 200
+
+
+@feedback_bp.route('/faculty/<faculty_id>/responses', methods=['DELETE'])
+@require_role(['hod', 'admin'])
+def delete_faculty_responses(faculty_id):
+    subs = db.collection(FeedbackSubmission.COLLECTION).where(f'ratings.{faculty_id}', '!=', None).stream()
+    for sub in subs:
+        sub.reference.delete()
+    return jsonify({"success": True}), 200
+
+
+@feedback_bp.route('/department/responses', methods=['DELETE'])
+@require_role(['hod', 'admin'])
+def delete_department_responses():
+    data = request.get_json()
+    college = data.get('college')
+    dept = data.get('dept')
+    batches = db.collection('batches').where('college', '==', college).where('department', '==', dept).stream()
+    for batch in batches:
+        subs = db.collection(FeedbackSubmission.COLLECTION).where('batch_id', '==', batch.id).stream()
+        for sub in subs:
+            sub.reference.delete()
+    return jsonify({"success": True}), 200
+
+
+@feedback_bp.route('/college/responses', methods=['DELETE'])
+@require_role(['admin'])
+def delete_college_responses():
+    data = request.get_json()
+    college = data.get('college')
+    batches = db.collection('batches').where('college', '==', college).stream()
+    for batch in batches:
+        subs = db.collection(FeedbackSubmission.COLLECTION).where('batch_id', '==', batch.id).stream()
+        for sub in subs:
+            sub.reference.delete()
+    return jsonify({"success": True}), 200
