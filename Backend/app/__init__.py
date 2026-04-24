@@ -20,13 +20,19 @@ def create_app(config_name=None):
     limiter.init_app(app)
 
     # --- CORS ---
-    allowed_origins = app.config.get('CORS_ORIGINS', ['http://localhost:5173'])
+    # We add your Firebase URL directly to the list
+    allowed_origins = app.config.get('CORS_ORIGINS', [
+        'http://localhost:5173', 
+        'https://rise-fds.web.app' # <--- Added your live site
+    ])
+    
     if isinstance(allowed_origins, str):
         allowed_origins = [o.strip() for o in allowed_origins.split(',')]
 
     cors.init_app(
         app,
-        resources={r"/api/*": {
+        # Changed pattern to match all routes starting with /
+        resources={r"/*": {
             "origins": allowed_origins,
             "supports_credentials": True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
