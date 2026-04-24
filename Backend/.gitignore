@@ -36,3 +36,5 @@ logs/
 .pytest_cache/
 htmlcov/
 .coverage
+# ─── Firebase / Google Cloud ─────────────────────────────────
+firebase-credentials.json

@@ -1,171 +1,56 @@
 import logging
 from flask import Blueprint, request, jsonify, g
+from datetime import datetime, timezone
 from ..extensions import db
 from ..models.faculty import Faculty
 from ..middleware.auth_middleware import require_role, require_auth
-from ..utils.validators import sanitize_string, validate_name, validate_subject
+from ..utils.validators import sanitize_string
 
 logger = logging.getLogger(__name__)
-
-# CRITICAL FIX: Was previously 'feedback' which collided with feedback.py
 faculty_bp = Blueprint('faculty', __name__)
-
 
 @faculty_bp.route('', methods=['GET'])
 @require_auth
 def get_all_faculty():
-    """Get all faculty — Admins see all, HoDs see their department only."""
     user = g.current_user
+    query = db.collection(Faculty.COLLECTION).where('is_active', '==', True)
+    
+    if user.get('role') != 'admin':
+        query = query.where('college', '==', user.get('college'))\
+                     .where('department', '==', user.get('department'))
 
-    if user.role == 'admin':
-        faculty_list = Faculty.query.filter_by(is_active=True).all()
-    else:
-        faculty_list = Faculty.query.filter_by(
-            college=user.college,
-            department=user.department,
-            is_active=True,
-        ).all()
-
-    return jsonify({"faculty": [f.to_dict() for f in faculty_list]}), 200
-
-
-@faculty_bp.route('/<int:faculty_id>', methods=['GET'])
-@require_auth
-def get_faculty_by_id(faculty_id):
-    """Get a single faculty member by ID."""
-    user = g.current_user
-    faculty = Faculty.query.get(faculty_id)
-
-    if not faculty or not faculty.is_active:
-        return jsonify({"error": "Faculty not found"}), 404
-
-    # HoDs can only view their own department's faculty
-    if user.role == 'hod' and (faculty.college != user.college or faculty.department != user.department):
-        return jsonify({"error": "Access denied"}), 403
-
-    return jsonify({"faculty": faculty.to_dict()}), 200
-
+    faculty_list = [Faculty.to_dict(doc.id, doc.to_dict()) for doc in query.stream()]
+    return jsonify({"faculty": faculty_list}), 200
 
 @faculty_bp.route('', methods=['POST'])
 @require_role(['hod', 'admin'])
 def create_faculty():
-    """Create a new faculty member."""
     user = g.current_user
     data = request.get_json()
 
-    if not data:
-        return jsonify({"error": "Request body required"}), 400
+    college = user.get('college') if user.get('role') == 'hod' else sanitize_string(data.get('college', ''), 100)
+    department = user.get('department') if user.get('role') == 'hod' else sanitize_string(data.get('dept', ''), 50)
 
-    name = sanitize_string(data.get('name', ''), 150)
-    subject = sanitize_string(data.get('subject', ''), 200)
-    year = sanitize_string(data.get('year', ''), 10)
-    sem = sanitize_string(data.get('sem', data.get('semester', '')), 10)
-    sec = sanitize_string(data.get('sec', data.get('section', '')), 20)
-    branch = sanitize_string(data.get('branch', ''), 50)
+    new_faculty = {
+        'name': sanitize_string(data.get('name', ''), 150),
+        'subject': sanitize_string(data.get('subject', ''), 200),
+        'year': sanitize_string(data.get('year', ''), 10),
+        'semester': sanitize_string(data.get('sem', ''), 10),
+        'section': sanitize_string(data.get('sec', ''), 20),
+        'branch': sanitize_string(data.get('branch', department), 50),
+        'college': college,
+        'department': department,
+        'is_active': True,
+        'created_at': datetime.now(timezone.utc)
+    }
 
-    # Validate inputs
-    valid, msg = validate_name(name)
-    if not valid:
-        return jsonify({"error": msg}), 400
+    doc_ref = db.collection(Faculty.COLLECTION).document()
+    doc_ref.set(new_faculty)
 
-    valid, msg = validate_subject(subject)
-    if not valid:
-        return jsonify({"error": msg}), 400
+    return jsonify({"success": True, "faculty": Faculty.to_dict(doc_ref.id, new_faculty)}), 201
 
-    # Determine college/dept
-    if user.role == 'hod':
-        college = user.college
-        department = user.department
-    else:
-        college = sanitize_string(data.get('college', ''), 100)
-        department = sanitize_string(data.get('dept', data.get('department', '')), 50)
-
-    if not college or not department:
-        return jsonify({"error": "College and department are required"}), 400
-
-    faculty = Faculty(
-        name=name,
-        subject=subject,
-        year=year,
-        semester=sem,
-        section=sec,
-        branch=branch or department,
-        college=college,
-        department=department,
-    )
-    db.session.add(faculty)
-    db.session.commit()
-
-    logger.info(f"Faculty created: {faculty.name} by {user.user_id}")
-
-    return jsonify({"success": True, "faculty": faculty.to_dict()}), 201
-
-
-@faculty_bp.route('/<int:faculty_id>', methods=['PUT'])
-@require_role(['hod', 'admin'])
-def update_faculty(faculty_id):
-    """Update an existing faculty member."""
-    user = g.current_user
-    faculty = Faculty.query.get(faculty_id)
-
-    if not faculty or not faculty.is_active:
-        return jsonify({"error": "Faculty not found"}), 404
-
-    # HoDs can only edit their own department's faculty
-    if user.role == 'hod' and (faculty.college != user.college or faculty.department != user.department):
-        return jsonify({"error": "Access denied"}), 403
-
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Request body required"}), 400
-
-    if 'name' in data:
-        name = sanitize_string(data['name'], 150)
-        valid, msg = validate_name(name)
-        if not valid:
-            return jsonify({"error": msg}), 400
-        faculty.name = name
-
-    if 'subject' in data:
-        subject = sanitize_string(data['subject'], 200)
-        valid, msg = validate_subject(subject)
-        if not valid:
-            return jsonify({"error": msg}), 400
-        faculty.subject = subject
-
-    if 'year' in data:
-        faculty.year = sanitize_string(data['year'], 10)
-    if 'sem' in data or 'semester' in data:
-        faculty.semester = sanitize_string(data.get('sem', data.get('semester', '')), 10)
-    if 'sec' in data or 'section' in data:
-        faculty.section = sanitize_string(data.get('sec', data.get('section', '')), 20)
-    if 'branch' in data:
-        faculty.branch = sanitize_string(data['branch'], 50)
-
-    db.session.commit()
-
-    logger.info(f"Faculty updated: {faculty.name} by {user.user_id}")
-
-    return jsonify({"success": True, "faculty": faculty.to_dict()}), 200
-
-
-@faculty_bp.route('/<int:faculty_id>', methods=['DELETE'])
+@faculty_bp.route('/<faculty_id>', methods=['DELETE'])
 @require_role(['hod', 'admin'])
 def delete_faculty(faculty_id):
-    """Soft-delete a faculty member."""
-    user = g.current_user
-    faculty = Faculty.query.get(faculty_id)
-
-    if not faculty or not faculty.is_active:
-        return jsonify({"error": "Faculty not found"}), 404
-
-    # HoDs can only delete their own department's faculty
-    if user.role == 'hod' and (faculty.college != user.college or faculty.department != user.department):
-        return jsonify({"error": "Access denied"}), 403
-
-    faculty.is_active = False
-    db.session.commit()
-
-    logger.info(f"Faculty soft-deleted: {faculty.name} by {user.user_id}")
-
-    return jsonify({"success": True, "message": f"Faculty {faculty.name} deleted successfully"}), 200
+    db.collection(Faculty.COLLECTION).document(faculty_id).update({'is_active': False})
+    return jsonify({"success": True, "message": "Faculty deleted successfully"}), 200

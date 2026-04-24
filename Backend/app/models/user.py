@@ -1,127 +1,42 @@
 import bcrypt
 from datetime import datetime, timezone
-from ..extensions import db
 
+class User:
+    COLLECTION = 'users'
 
-class User(db.Model):
-    __tablename__ = 'users'
-
-    id = db.Column(
-        db.Integer,
-        primary_key=True,
-    )
-    user_id = db.Column(
-        db.String(50),
-        unique=True,
-        nullable=False,
-        index=True,
-    )
-    password_hash = db.Column(
-        db.String(255),
-        nullable=False,
-    )
-    name = db.Column(
-        db.String(150),
-        nullable=False,
-    )
-    role = db.Column(
-        db.String(20),
-        nullable=False,
-        index=True,
-    )
-    college = db.Column(
-        db.String(100),
-        nullable=True,
-    )
-    department = db.Column(
-        db.String(50),
-        nullable=True,
-    )
-    email = db.Column(
-        db.String(150),
-        nullable=True,
-        index=True,
-    )
-    mobile = db.Column(
-        db.String(15),
-        nullable=True,
-        index=True,
-    )
-    is_active = db.Column(
-        db.Boolean,
-        default=True,
-        nullable=False,
-    )
-    reset_otp = db.Column(
-        db.String(6),
-        nullable=True,
-    )
-    reset_otp_expiry = db.Column(
-        db.DateTime,
-        nullable=True,
-    )
-    created_at = db.Column(
-        db.DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
-    )
-    updated_at = db.Column(
-        db.DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    __table_args__ = (
-        db.Index(
-            'idx_user_college_dept',
-            'college',
-            'department',
-        ),
-    )
-
-    def set_password(self, password):
+    @staticmethod
+    def set_password(password):
         salt = bcrypt.gensalt()
-        self.password_hash = bcrypt.hashpw(
-            password.encode('utf-8'),
-            salt,
-        ).decode('utf-8')
+        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
-    def check_password(self, password):
-        return bcrypt.checkpw(
-            password.encode('utf-8'),
-            self.password_hash.encode('utf-8'),
-        )
+    @staticmethod
+    def check_password(password, hashed_password):
+        return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
 
-    def to_dict(self):
-        # Compute admin title from user_id prefix for management accounts
+    @staticmethod
+    def to_dict(doc_id, data):
+        user_id = data.get('user_id', '')
+        role = data.get('role', '')
+        
         admin_title = None
-        if self.role == 'admin' and self.user_id:
-            if self.user_id.startswith('PRINCIPAL-'):
+        if role == 'admin' and user_id:
+            if user_id.startswith('PRINCIPAL-'):
                 admin_title = 'Principal'
-            elif self.user_id.startswith('DIRECTOR-'):
+            elif user_id.startswith('DIRECTOR-'):
                 admin_title = 'Director'
-            elif self.user_id.startswith('CHAIRMAN-'):
+            elif user_id.startswith('CHAIRMAN-'):
                 admin_title = 'Chairman'
 
         return {
-            'id': self.id,
-            'userId': self.user_id,
-            'name': self.name,
-            'role': self.role,
+            'id': doc_id,
+            'userId': user_id,
+            'name': data.get('name', ''),
+            'role': role,
             'adminTitle': admin_title,
-            'college': self.college or '',
-            'department': self.department or '',
-            'username': self.name,
-            'email': self.email or '',
-            'isActive': self.is_active,
-            'createdAt': (
-                self.created_at.isoformat()
-                if self.created_at
-                else None
-            ),
+            'college': data.get('college', ''),
+            'department': data.get('department', ''),
+            'username': data.get('name', ''),
+            'email': data.get('email', ''),
+            'isActive': data.get('is_active', True),
+            'createdAt': data.get('created_at').isoformat() if data.get('created_at') else None
         }
-
-    def __repr__(self):
-        return (
-            f'<User {self.user_id} ({self.role})>'
-        )

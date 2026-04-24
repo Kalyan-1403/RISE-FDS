@@ -1,117 +1,23 @@
 from datetime import datetime, timezone
-from ..extensions import db
 
+class Faculty:
+    COLLECTION = 'faculty'
 
-class Faculty(db.Model):
-    __tablename__ = 'faculty'
-
-    id = db.Column(
-        db.Integer,
-        primary_key=True,
-    )
-    name = db.Column(
-        db.String(150),
-        nullable=False,
-    )
-    subject = db.Column(
-        db.String(200),
-        nullable=False,
-    )
-    year = db.Column(
-        db.String(10),
-        nullable=False,
-    )
-    semester = db.Column(
-        db.String(10),
-        nullable=False,
-    )
-    section = db.Column(
-        db.String(20),
-        nullable=False,
-    )
-    branch = db.Column(
-        db.String(50),
-        nullable=False,
-    )
-    department = db.Column(
-        db.String(50),
-        nullable=False,
-        index=True,
-    )
-    college = db.Column(
-        db.String(100),
-        nullable=False,
-        index=True,
-    )
-    added_by = db.Column(
-        db.Integer,
-        db.ForeignKey('users.id'),
-        nullable=True,
-    )
-    is_active = db.Column(
-        db.Boolean,
-        default=True,
-        nullable=False,
-    )
-    created_at = db.Column(
-        db.DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
-    )
-    updated_at = db.Column(
-        db.DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    added_by_user = db.relationship(
-        'User',
-        backref='added_faculty',
-        lazy=True,
-    )
-    feedback_ratings = db.relationship(
-        'FeedbackRating',
-        backref='faculty',
-        lazy=True,
-        cascade='all, delete-orphan',
-    )
-
-    __table_args__ = (
-        db.Index(
-            'idx_faculty_college_dept',
-            'college',
-            'department',
-        ),
-        db.Index(
-            'idx_faculty_lookup',
-            'college',
-            'department',
-            'year',
-            'semester',
-            'section',
-        ),
-    )
-
-    def to_dict(self):
+    @staticmethod
+    def to_dict(doc_id, data):
         return {
-            'id': self.id,
-            'name': self.name,
-            'subject': self.subject,
-            'year': self.year,
-            'sem': self.semester,
-            'sec': self.section,
-            'branch': self.branch,
-            'dept': self.department,
-            'college': self.college,
+            'id': doc_id,
+            'name': data.get('name', ''),
+            'subject': data.get('subject', ''),
+            'year': data.get('year', ''),
+            'sem': data.get('semester', ''),
+            'sec': data.get('section', ''),
+            'branch': data.get('branch', ''),
+            'dept': data.get('department', ''),
+            'college': data.get('college', ''),
             'addedDate': (
-                self.created_at.strftime('%m/%d/%Y')
-                if self.created_at
-                else None
+                data.get('created_at').strftime('%m/%d/%Y')
+                if data.get('created_at') else None
             ),
-            'isActive': self.is_active,
+            'isActive': data.get('is_active', True)
         }
-
-    def __repr__(self):
-        return (
-            f'<Faculty {self.id} - {self.name}>'
-        )

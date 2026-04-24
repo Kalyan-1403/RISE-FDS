@@ -3,24 +3,19 @@ import logging
 from flask import Flask, jsonify
 
 from .config import config_map
-from .extensions import db, migrate, jwt, cors, limiter, is_token_revoked
+from .extensions import db, jwt, cors, limiter, is_token_revoked
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 def create_app(config_name=None):
     if config_name is None:
         config_name = os.getenv('FLASK_ENV', 'development')
 
     app = Flask(__name__)
-    app.config.from_object(
-        config_map.get(config_name, config_map['development'])
-    )
+    app.config.from_object(config_map.get(config_name, config_map['development']))
 
     # --- Initialize Extensions ---
-    db.init_app(app)
-    migrate.init_app(app, db)
     jwt.init_app(app)
     limiter.init_app(app)
 
@@ -62,13 +57,11 @@ def create_app(config_name=None):
     else:
         logger.info("🔓 Talisman disabled (development)")
 
-    # --- JWT: Token Blocklist Loader ---
-    # FIX (HIGH): Revoked tokens (after logout) are rejected on every request.
+    # --- JWT Blocks ---
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
         return is_token_revoked(jwt_payload["jti"])
 
-    # --- JWT Error Handlers ---
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
         return jsonify({"error": "Token has expired", "code": "TOKEN_EXPIRED"}), 401
@@ -100,17 +93,17 @@ def create_app(config_name=None):
     app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
     app.register_blueprint(reports_bp, url_prefix='/api/reports')
 
-    # --- Health Check ---
+    # --- Health Check (Now checks Firestore) ---
     @app.route('/api/health', methods=['GET'])
     def health_check():
         try:
-            db.session.execute(db.text('SELECT 1'))
+            # Ping Firestore to ensure connectivity
+            list(db.collection('users').limit(1).stream())
             db_status = 'connected'
-        except Exception:
+        except Exception as e:
+            logger.error(f"Database connection error: {e}")
             db_status = 'disconnected'
 
-        # FIX (HIGH): Removed "environment" field — leaking config_name
-        # gives attackers useful fingerprinting information.
         return jsonify({
             "status": "healthy",
             "database": db_status,
