@@ -25,7 +25,10 @@ class BaseConfig:
     JWT_REFRESH_COOKIE_PATH = '/api/auth'
 
     FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:5173').split(',')
+    CORS_ORIGINS = os.getenv(
+        'CORS_ORIGINS',
+        'http://localhost:5173,https://rise-fds.web.app,https://rise-fds.firebaseapp.com'
+    ).split(',')
 
 class DevelopmentConfig(BaseConfig):
     DEBUG = True

@@ -22,8 +22,9 @@ def create_app(config_name=None):
     # --- CORS ---
     # We add your Firebase URL directly to the list
     allowed_origins = app.config.get('CORS_ORIGINS', [
-        'http://localhost:5173', 
-        'https://rise-fds.web.app' # <--- Added your live site
+        'http://localhost:5173',
+        'https://rise-fds.web.app',
+        'https://rise-fds.firebaseapp.com',
     ])
     
     if isinstance(allowed_origins, str):
@@ -43,19 +44,23 @@ def create_app(config_name=None):
     # --- Talisman: ONLY in production ---
     if not app.config.get('TESTING') and not app.config.get('DEBUG'):
         try:
+            from flask import request as flask_request
             from flask_talisman import Talisman
+
+            # Exempt OPTIONS preflight requests from Talisman
+            # so CORS can respond before Talisman intercepts
+            def talisman_exempt_when_options():
+                return flask_request.method == 'OPTIONS'
+
             Talisman(
                 app,
-                force_https=True,
+                force_https=False,          # Cloud Run handles HTTPS termination
+                force_https_permanent=False,
                 strict_transport_security=True,
                 strict_transport_security_max_age=31536000,
-                content_security_policy={
-                    'default-src': "'self'",
-                    'script-src': "'self'",
-                    'style-src': ["'self'", "'unsafe-inline'"],
-                    'img-src': ["'self'", "data:"],
-                    'font-src': "'self'",
-                },
+                content_security_policy=False, # Disable CSP — it blocks nothing on API server
+                frame_options='DENY',
+                referrer_policy='strict-origin-when-cross-origin',
             )
             logger.info("🔒 Talisman enabled (production)")
         except ImportError:
