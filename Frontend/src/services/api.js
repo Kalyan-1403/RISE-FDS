@@ -158,6 +158,7 @@ export const batchAPI = {
   getById: (batchId) => api.get(`/batch/${batchId}`),
   list: () => api.get('/batch/list'),
   revoke: (batchId) => api.delete(`/batch/${batchId}/revoke`),
+  deactivate: (batchId) => api.delete(`/batch/${batchId}/deactivate`),
 };
 
 export const sectionAPI = {

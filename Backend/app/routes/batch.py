@@ -138,11 +138,38 @@ def list_batches():
 @batch_bp.route('/<batch_id>/revoke', methods=['DELETE'])
 @require_role(['hod', 'admin'])
 def revoke_batch(batch_id):
-    db.collection(Batch.COLLECTION).document(batch_id).update({'is_active': False})
+    """Revoke: deactivate link AND permanently delete all submitted responses."""
+    user = g.current_user
+    doc_ref = db.collection(Batch.COLLECTION).document(batch_id)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return jsonify({"error": "Batch not found"}), 404
+    b = doc.to_dict()
+    if user.get('role') == 'hod' and (b.get('college') != user.get('college') or b.get('department') != user.get('department')):
+        return jsonify({"error": "Access denied"}), 403
+    doc_ref.update({'is_active': False})
     subs = db.collection('feedback_submissions').where('batch_id', '==', batch_id).stream()
     for sub in subs:
         sub.reference.delete()
+    logger.info(f"Batch revoked + responses wiped: {batch_id} by {user.get('user_id','?')}")
     return jsonify({"success": True, "message": "Batch revoked and responses deleted"}), 200
+
+
+@batch_bp.route('/<batch_id>/deactivate', methods=['DELETE'])
+@require_role(['hod', 'admin'])
+def deactivate_batch(batch_id):
+    """Deactivate: close the link only. Submitted responses are preserved."""
+    user = g.current_user
+    doc_ref = db.collection(Batch.COLLECTION).document(batch_id)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return jsonify({"error": "Batch not found"}), 404
+    b = doc.to_dict()
+    if user.get('role') == 'hod' and (b.get('college') != user.get('college') or b.get('department') != user.get('department')):
+        return jsonify({"error": "Access denied"}), 403
+    doc_ref.update({'is_active': False})
+    logger.info(f"Batch deactivated (data kept): {batch_id} by {user.get('user_id','?')}")
+    return jsonify({"success": True, "message": "Link closed. Submitted responses are preserved."}), 200
 
 
 # ── Section Management ──────────────────────────────────────────────────────

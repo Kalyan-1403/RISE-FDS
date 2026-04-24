@@ -43,6 +43,13 @@ const StudentFeedback = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
 
+    // Device-level one-submission guard using localStorage
+    const submittedKey = `submitted_${batchId}`;
+    if (localStorage.getItem(submittedKey) === 'true') {
+      setSubmitted(true);
+      return;
+    }
+
     const fetchBatchData = async () => {
       try {
         const batch =
@@ -162,6 +169,7 @@ const StudentFeedback = () => {
       await dataService.submitFeedback(
         feedbackData
       );
+      localStorage.setItem(`submitted_${batchId}`, 'true');
       setSubmitted(true);
       setShowModal(false);
     } catch (error) {

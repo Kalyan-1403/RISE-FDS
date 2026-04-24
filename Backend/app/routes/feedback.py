@@ -27,12 +27,29 @@ def submit_feedback():
     batch_data = batch_doc.to_dict()
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
 
+    # Check slot end date — students cannot submit after the window closes
+    slot_end = batch_data.get('slot_end_date')
+    if slot_end:
+        from datetime import date
+        end_date = slot_end.date() if hasattr(slot_end, 'date') else None
+        if end_date and date.today() > end_date:
+            return jsonify({"error": "The feedback window for this link has closed."}), 409
+
     # 2. Check Submission Limits
-    if batch_data.get('total_students', 0) > 0:
+    total_students = batch_data.get('total_students', 0)
+    if total_students > 0:
         count_query = db.collection(FeedbackSubmission.COLLECTION).where('batch_id', '==', batch_id_str).count()
         current_count = count_query.get()[0][0].value
-        if current_count >= batch_data['total_students']:
-            return jsonify({"error": "Maximum responses reached."}), 409
+        if current_count >= total_students:
+            return jsonify({"error": f"This section has reached its maximum response limit ({total_students})."}), 409
+
+    # 2b. One-per-device check via IP (best-effort — covers most cases)
+    existing_ip = db.collection(FeedbackSubmission.COLLECTION)\
+        .where('batch_id', '==', batch_id_str)\
+        .where('ip_address', '==', client_ip)\
+        .limit(1).stream()
+    if any(existing_ip):
+        return jsonify({"error": "A response from this device has already been submitted for this link."}), 409
 
     # 3. Format the Embedded Ratings Map (The Cost Saver)
     ratings_map = {}

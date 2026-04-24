@@ -345,6 +345,17 @@ const revokeBatch = async (batchId) => {
   }
 };
 
+const deactivateBatch = async (batchId) => {
+  try {
+    const r = await batchAPI.deactivate(batchId);
+    setBackendStatus(true);
+    return r.data;
+  } catch (e) {
+    if (e.response) { setBackendStatus(true); throw new Error(e.response.data.error || 'Failed to delete link'); }
+    setBackendStatus(false);
+    throw new Error('Cannot connect.');
+  }
+};
 // ─── FEEDBACK ─────────────────────────────────────────────────────────────────
 
 const submitFeedback = async (data) => {
@@ -497,6 +508,7 @@ const dataService = {
   getBatch,
   listBatches,
   revokeBatch,
+  deactivateBatch,
   // Feedback
   submitFeedback,
   getFacultyStats,

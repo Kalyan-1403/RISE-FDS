@@ -143,7 +143,7 @@ const HoDDashboard = () => {
   const [selFacIds,      setSelFacIds]      = useState([]);
   const [isPublishing,   setIsPublishing]   = useState(false);
 
-  const [downloadYear,    setDownloadYear]    = useState('');
+  const [downloadKey,     setDownloadKey]     = useState(''); // year for normal depts, branch for S&H
   const [downloadSection, setDownloadSection] = useState('');
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -178,6 +178,20 @@ const HoDDashboard = () => {
       return `${y}-${String(y + 1).slice(-2)}`;
     })()
   );
+
+  // Semester date windows — stored in localStorage per dept
+  const semKeyPrefix = `semDates_${currentUser?.college}_${currentUser?.department}`;
+  const [semDates, setSemDates] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(semKeyPrefix) || '{}'); } catch { return {}; }
+  });
+  const [showSemModal, setShowSemModal] = useState(false);
+  const [editSemDates, setEditSemDates] = useState({});
+
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem(`semDates_${currentUser.college}_${currentUser.department}`, JSON.stringify(semDates));
+    }
+  }, [semDates, currentUser]);
 
   /* ── Toast ── */
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
@@ -234,6 +248,8 @@ const HoDDashboard = () => {
     } catch (e) { console.warn('Could not load sections'); }
   }, [currentUser]);
 
+  const livePollRef = useRef(null);
+
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'hod') {
       navigate('/', { replace: true });
@@ -241,11 +257,27 @@ const HoDDashboard = () => {
     }
     loadDashboardData();
     loadSections();
+    // Full data refresh every 60s
     pollingRef.current = setInterval(loadDashboardData, 60000);
-    const interval = pollingRef.current;
+    // Live feed response-count refresh every 15s (lightweight — same call, just more frequent)
+    livePollRef.current = setInterval(async () => {
+      try {
+        const dashData = await dataService.getHoDDashboard();
+        if (dashData.batches !== undefined) {
+          setAllBatches(prev => {
+            const updated = JSON.stringify(prev) === JSON.stringify(dashData.batches) ? prev : dashData.batches;
+            return updated;
+          });
+        }
+      } catch (_) { /* silent */ }
+    }, 15000);
     const onFocus = () => loadDashboardData();
     window.addEventListener('focus', onFocus);
-    return () => { clearInterval(interval); window.removeEventListener('focus', onFocus); };
+    return () => {
+      clearInterval(pollingRef.current);
+      clearInterval(livePollRef.current);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [currentUser, navigate, loadDashboardData, loadSections]);
 
   /* ── Memos ── */
@@ -302,9 +334,18 @@ const HoDDashboard = () => {
 
   const downloadSections = useMemo(() => {
     if (!downloadYear) return [];
-    return (sectionsByKey[downloadYear] || []).filter(s => {
-      const batch = allBatches.find(b => b.year === downloadYear && (b.sec === s.sectionName || b.section === s.sectionName));
-      return batch && batch.totalStudents > 0 && (batch.responseCount || 0) >= batch.totalStudents;
+    const key = downloadYear; // works for both year and branch
+    return (sectionsByKey[key] || []).filter(s => {
+      const batch = allBatches.find(b =>
+        (b.year === key || b.branch === key) &&
+        (b.sec === s.sectionName || b.section === s.sectionName)
+      );
+      if (!batch) return false;
+      const hasResponses = (batch.responseCount || 0) > 0;
+      const endDatePassed = batch.slotEndDate && new Date(batch.slotEndDate) < new Date();
+      // Show if: responses = total_students OR (end date passed and has at least 1 response)
+      const responsesComplete = batch.totalStudents > 0 && (batch.responseCount || 0) >= batch.totalStudents;
+      return responsesComplete || (endDatePassed && hasResponses);
     });
   }, [downloadYear, sectionsByKey, allBatches]);
 
@@ -630,16 +671,30 @@ const HoDDashboard = () => {
     finally { setIsDeleting(false); }
   };
 
- /* ── Revoke batch ── */
+ /* ── Revoke batch (wipes all responses) ── */
   const handleRevokeBatch = (batch) => {
     showConfirm(
-      `Revoke feedback link for Year ${batch.year} · Sem ${batch.sem} · Sec ${batch.sec}? This permanently DELETES all ${batch.responseCount || 0} submitted responses and closes the link.`,
+      `⚠️ REVOKE link for Year ${batch.year} · Sem ${batch.sem} · Sec ${batch.sec}?\n\nThis permanently DELETES all ${batch.responseCount || 0} submitted responses AND closes the link. This cannot be undone.`,
       async () => {
         try {
           await dataService.revokeBatch(batch.id);
-          await loadDashboardData();
-          showToast('Batch revoked and all responses wiped.', 'success');
+          setAllBatches(prev => prev.filter(b => b.id !== batch.id));
+          showToast('Link revoked and all responses permanently deleted.', 'success');
         } catch (err) { showToast(err.message || 'Failed to revoke.'); }
+      }
+    );
+  };
+
+  /* ── Delete link only (keeps responses) ── */
+  const handleDeleteLink = (batch) => {
+    showConfirm(
+      `Delete feedback link for Year ${batch.year} · Sem ${batch.sem} · Sec ${batch.sec}?\n\nThe link will be closed but all ${batch.responseCount || 0} submitted responses are KEPT in the database.`,
+      async () => {
+        try {
+          await dataService.deactivateBatch(batch.id);
+          setAllBatches(prev => prev.filter(b => b.id !== batch.id));
+          showToast('Link removed. Submitted responses are preserved.', 'success');
+        } catch (err) { showToast(err.message || 'Failed to remove link.'); }
       }
     );
   };
@@ -680,9 +735,9 @@ const HoDDashboard = () => {
   };
 
   /* ── Abstract PDF download ── */
-const handleDownloadAbstract = async (year, sec) => {
+const handleDownloadAbstract = async (yearOrBranch, sec) => {
     const batch = allBatches.find(b =>
-      b.year === year && (b.sec === sec || b.section === sec)
+      (b.year === yearOrBranch || b.branch === yearOrBranch) && (b.sec === sec || b.section === sec)
     );
     if (!batch) { showToast('No published batch found for this section.'); return; }
 
@@ -729,7 +784,7 @@ const handleDownloadAbstract = async (year, sec) => {
 
       const sem = batch?.sem || '?';
       // ONLY pass the single facultyWithStats array now (no more suggestions array needed)
-      generateAbstractPDF(currentUser.college, currentUser.department, { year, sem, sec }, facultyWithStats);
+      generateAbstractPDF(currentUser.college, currentUser.department, { year: yearOrBranch, sem, sec }, facultyWithStats);
       showToast('Abstract PDF downloaded!', 'success');
     } catch (err) {
       console.error(err);
@@ -835,23 +890,37 @@ const handleDownloadAbstract = async (year, sec) => {
                 <h4 className="download-title">🗓️ Academic Year</h4>
                 <input type="text" value={academicYear} onChange={e => setAcademicYear(e.target.value)}
                   placeholder="e.g. 2024-25" className="download-select"
-                  style={{ marginBottom: '10px', fontWeight: '700', textAlign: 'center' }} />
+                  style={{ marginBottom: '8px', fontWeight: '700', textAlign: 'center' }} />
+                <button type="button"
+                  onClick={() => { setEditSemDates({ ...semDates }); setShowSemModal(true); }}
+                  className="btn-manage-sections" style={{ background: 'linear-gradient(135deg,#0ea5e9,#0284c7)', marginTop: '4px' }}>
+                  📅 Set Semester Dates
+                </button>
+                {semDates.sem1Start && (
+                  <div style={{ fontSize: '11px', color: '#0369a1', fontWeight: '600', marginTop: '6px', padding: '6px 8px', background: '#e0f2fe', borderRadius: '7px' }}>
+                    Sem I: {semDates.sem1Start} → {semDates.sem1End || '?'}<br/>
+                    {semDates.sem2Start && <>Sem II: {semDates.sem2Start} → {semDates.sem2End || '?'}</>}
+                  </div>
+                )}
               </div>
 
               <div className="download-section">
                 <h4 className="download-title">📥 Download Abstract PDF</h4>
-                <select value={downloadYear} onChange={e => { setDownloadYear(e.target.value); setDownloadSection(''); }} className="download-select">
-                  <option value="">Select Year</option>
-                  {availableYears.map(y => <option key={y} value={y}>{y} Year</option>)}
+                <select value={downloadKey} onChange={e => { setDownloadKey(e.target.value); setDownloadSection(''); }} className="download-select">
+                  <option value="">{isSH ? 'Select Branch' : 'Select Year'}</option>
+                  {isSH
+                    ? availableBranches.map(b => <option key={b} value={b}>{b}</option>)
+                    : availableYears.map(y => <option key={y} value={y}>{y} Year</option>)
+                  }
                 </select>
-                <select value={downloadSection} onChange={e => setDownloadSection(e.target.value)} disabled={!downloadYear} className="download-select">
-                  <option value="">{!downloadYear ? 'Select year first' : !downloadSections.length ? 'No completed sections' : 'Select Section'}</option>
+                <select value={downloadSection} onChange={e => setDownloadSection(e.target.value)} disabled={!downloadKey} className="download-select">
+                  <option value="">{!downloadKey ? (isSH ? 'Select branch first' : 'Select year first') : !downloadSections.length ? 'No completed sections' : 'Select Section'}</option>
                   {downloadSections.map(s => <option key={s.id} value={s.sectionName}>Section {s.sectionName} ✅</option>)}
                 </select>
                 <button type="button" className="btn-download"
                   onClick={() => {
-                    if (!downloadYear || !downloadSection) { showToast('Select Year and a completed Section.'); return; }
-                    handleDownloadAbstract(downloadYear, downloadSection);
+                    if (!downloadKey || !downloadSection) { showToast(isSH ? 'Select Branch and a completed Section.' : 'Select Year and a completed Section.'); return; }
+                    handleDownloadAbstract(downloadKey, downloadSection);
                   }}>📥 Download Abstract</button>
               </div>
             </section>
@@ -1018,11 +1087,18 @@ const live = batch.slotStartDate && endOfDay
                         <div className="lfc-top">
                           <span className={`lfc-status ${live ? 'live' : 'ended'}`}>{live ? '🟢 LIVE' : '⚫ ENDED'}</span>
                           <span className="lfc-slot">Slot {batch.slot}</span>
-                          <button type="button" onClick={() => handleRevokeBatch(batch)}
-                            title="Revoke link & wipe responses"
-                            style={{ marginLeft: 'auto', background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }}>
-                            🚫 Revoke
-                          </button>
+                          <div style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
+                            <button type="button" onClick={() => handleDeleteLink(batch)}
+                              title="Remove link only — responses kept"
+                              style={{ background: 'none', border: '1px solid #94a3b8', color: '#64748b', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }}>
+                              🗑 Delete
+                            </button>
+                            <button type="button" onClick={() => handleRevokeBatch(batch)}
+                              title="Revoke link & permanently wipe all responses"
+                              style={{ background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: '700' }}>
+                              🚫 Revoke
+                            </button>
+                          </div>
                         </div>
                         <div className="lfc-identity">
                           <span>Year {batch.year}</span><span className="lfc-dot">·</span>
@@ -1527,6 +1603,39 @@ const live = batch.slotStartDate && endOfDay
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn-confirm" onClick={() => setShowSectionModal(false)}>✅ Done</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+	{/* ═══════════════ SEMESTER DATES MODAL ═══════════════ */}
+        {showSemModal && (
+          <div className="modal-overlay" onClick={() => setShowSemModal(false)}>
+            <div className="modal-content" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header"><h2>📅 Semester Dates</h2><p>Set start and end dates for each semester. Students can only submit feedback within these windows.</p></div>
+              <div className="modal-body" style={{ gap: '18px' }}>
+                {[{ key: 'sem1', label: 'Semester I' }, { key: 'sem2', label: 'Semester II' }].map(({ key, label }) => (
+                  <div key={key} style={{ background: '#f8fafc', borderRadius: '12px', padding: '14px', border: '2px solid #e2e8f0' }}>
+                    <div style={{ fontWeight: '800', fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>{label}</div>
+                    <div className="date-row">
+                      <div className="form-field">
+                        <label>Start Date</label>
+                        <input type="date" value={editSemDates[`${key}Start`] || ''}
+                          onChange={e => setEditSemDates(p => ({ ...p, [`${key}Start`]: e.target.value }))} />
+                      </div>
+                      <div className="form-field">
+                        <label>End Date</label>
+                        <input type="date" value={editSemDates[`${key}End`] || ''}
+                          min={editSemDates[`${key}Start`] || ''}
+                          onChange={e => setEditSemDates(p => ({ ...p, [`${key}End`]: e.target.value }))} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="modal-footer">
+                <button className="btn-confirm" onClick={() => { setSemDates(editSemDates); setShowSemModal(false); showToast('Semester dates saved.', 'success'); }}>✅ Save</button>
+                <button className="btn-modal-cancel" onClick={() => setShowSemModal(false)}>Cancel</button>
               </div>
             </div>
           </div>
